@@ -150,7 +150,7 @@ function starterModules() {
       kind: "markdown",
       title: "\u9605\u8BFB\u8FDB\u5EA6",
       span: 1,
-      markdown: '```dataview\nTABLE WITHOUT ID file.link AS \u4E66\u7C4D, reading-progress AS \u8FDB\u5EA6\nFROM \\"05_Books/epub-bookmarks\\"\nWHERE reading-progress\nSORT reading-progress DESC\nLIMIT 5\n```'
+      markdown: '```dataview\nTABLE WITHOUT ID file.link AS \u4E66\u7C4D, reading-progress AS \u8FDB\u5EA6\nFROM "05_Books/epub-bookmarks"\nWHERE reading-progress\nSORT reading-progress DESC\nLIMIT 5\n```'
     }
   ];
 }
@@ -314,6 +314,11 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     this.config.savedPages = [...this.config.savedPages.filter((page) => page.id !== this.config.pageId), this.activeSnapshot()];
     const fresh = defaultConfig();
     fresh.pageName = cleanName;
+    fresh.layouts = {
+      mobile: { modules: [] },
+      tablet: { modules: [] },
+      desktop: { modules: [] }
+    };
     this.config.pageId = fresh.pageId;
     this.config.pageName = fresh.pageName;
     this.config.layoutMode = fresh.layoutMode;
@@ -647,9 +652,9 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
         if (kind === "assets") created.options = { assetPath: "09_\u6570\u5B57\u8D44\u4EA7/\u8D44\u4EA7" };
         if (kind === "aiusage") created.options = { usagePath: "03_\u751F\u6D3B\u8BB0\u5F55/05_AI\u7528\u91CF" };
         if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "\u5F53\u524D\u4F4D\u7F6E", weatherText: "\u6674", weatherTemperature: "--\xB0" };
-        this.plugin.resolvedLayout(this.device()).modules.push(created);
+        this.plugin.resolvedLayout(this.device()).modules.unshift(created);
         await this.plugin.saveConfig();
-        this.openModuleEditor(created);
+        new import_obsidian.Notice(`\u5DF2\u6DFB\u52A0\u201C${label}\u201D\u6A21\u5757\u3002\u5B83\u73B0\u5728\u663E\u793A\u5728\u4E3B\u9875\u6700\u4E0A\u65B9\uFF1B\u70B9\u6A21\u5757\u4E0B\u65B9\u7684\u201C\u7F16\u8F91\u201D\u53EF\u7EE7\u7EED\u8BBE\u7F6E\u3002`);
       };
     }
     document.body.appendChild(menu);
@@ -1215,7 +1220,7 @@ var NewHomeModal = class extends import_obsidian.Modal {
   onOpen() {
     this.contentEl.addClass("hb-modal");
     this.contentEl.createEl("h2", { text: "\u65B0\u5EFA\u4E3B\u9875" });
-    this.contentEl.createEl("p", { text: "\u65B0\u4E3B\u9875\u4ECE\u8D77\u6B65\u6A21\u677F\u5F00\u59CB\uFF0C\u4E4B\u540E\u53EF\u5355\u72EC\u7F16\u8F91\u5E03\u5C40\u3001\u80CC\u666F\u4E0E\u6A21\u5757\u3002" });
+    this.contentEl.createEl("p", { text: "\u65B0\u4E3B\u9875\u9ED8\u8BA4\u662F\u7A7A\u767D\u7684\u3002\u521B\u5EFA\u540E\u70B9\u201C\u6DFB\u52A0\u6A21\u5757\u201D\u81EA\u884C\u642D\u5EFA\uFF1B\u5982\u9700\u793A\u4F8B\u5185\u5BB9\uFF0C\u53EF\u5728\u7F16\u8F91\u6A21\u5F0F\u4E2D\u9009\u62E9\u201C\u6A21\u677F\u201D\u3002" });
     new import_obsidian.Setting(this.contentEl).setName("\u4E3B\u9875\u540D\u79F0").addText((text) => text.setPlaceholder("\u4F8B\u5982\uFF1A\u5DE5\u4F5C\u3001\u5B66\u4E60\u3001\u65C5\u884C").onChange((value) => this.name = value));
     const actions = this.contentEl.createDiv({ cls: "modal-button-container" });
     new import_obsidian.ButtonComponent(actions).setButtonText("\u53D6\u6D88").onClick(() => this.close());
@@ -1238,7 +1243,7 @@ var PageManagerModal = class _PageManagerModal extends import_obsidian.Modal {
       await this.plugin.renamePage(this.plugin.config.pageName);
       new import_obsidian.Notice("\u4E3B\u9875\u540D\u79F0\u5DF2\u66F4\u65B0\u3002");
     }));
-    new import_obsidian.Setting(this.contentEl).setName("\u65B0\u5EFA\u4E3B\u9875").setDesc("\u4ECE\u8D77\u6B65\u6A21\u677F\u521B\u5EFA\u4E00\u5F20\u72EC\u7ACB\u4E3B\u9875\u3002").addButton((button) => button.setButtonText("\u65B0\u5EFA").setCta().onClick(() => {
+    new import_obsidian.Setting(this.contentEl).setName("\u65B0\u5EFA\u4E3B\u9875").setDesc("\u521B\u5EFA\u4E00\u5F20\u7A7A\u767D\u3001\u72EC\u7ACB\u7684\u4E3B\u9875\uFF1B\u53EF\u5728\u7F16\u8F91\u6A21\u5F0F\u4E2D\u5BFC\u5165\u6A21\u677F\u3002").addButton((button) => button.setButtonText("\u65B0\u5EFA").setCta().onClick(() => {
       this.close();
       new NewHomeModal(this.appRef, this.plugin).open();
     }));

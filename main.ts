@@ -220,7 +220,7 @@ function starterModules(): HomeModule[] {
       kind: "markdown",
       title: "阅读进度",
       span: 1,
-      markdown: "```dataview\nTABLE WITHOUT ID file.link AS 书籍, reading-progress AS 进度\nFROM \\\"05_Books/epub-bookmarks\\\"\nWHERE reading-progress\nSORT reading-progress DESC\nLIMIT 5\n```",
+      markdown: "```dataview\nTABLE WITHOUT ID file.link AS 书籍, reading-progress AS 进度\nFROM \"05_Books/epub-bookmarks\"\nWHERE reading-progress\nSORT reading-progress DESC\nLIMIT 5\n```",
     },
   ];
 }
@@ -395,6 +395,11 @@ export default class HomeBuilderPlugin extends Plugin {
     this.config.savedPages = [...this.config.savedPages.filter((page) => page.id !== this.config.pageId), this.activeSnapshot()];
     const fresh = defaultConfig();
     fresh.pageName = cleanName;
+    fresh.layouts = {
+      mobile: { modules: [] },
+      tablet: { modules: [] },
+      desktop: { modules: [] },
+    };
     this.config.pageId = fresh.pageId;
     this.config.pageName = fresh.pageName;
     this.config.layoutMode = fresh.layoutMode;
@@ -720,9 +725,9 @@ class HomeBuilderView extends ItemView {
         if (kind === "assets") created.options = { assetPath: "09_数字资产/资产" };
         if (kind === "aiusage") created.options = { usagePath: "03_生活记录/05_AI用量" };
         if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "当前位置", weatherText: "晴", weatherTemperature: "--°" };
-        this.plugin.resolvedLayout(this.device()).modules.push(created);
+        this.plugin.resolvedLayout(this.device()).modules.unshift(created);
         await this.plugin.saveConfig();
-        this.openModuleEditor(created);
+        new Notice(`已添加“${label}”模块。它现在显示在主页最上方；点模块下方的“编辑”可继续设置。`);
       };
     }
     document.body.appendChild(menu);
@@ -1146,7 +1151,7 @@ class NewHomeModal extends Modal {
   onOpen() {
     this.contentEl.addClass("hb-modal");
     this.contentEl.createEl("h2", { text: "新建主页" });
-    this.contentEl.createEl("p", { text: "新主页从起步模板开始，之后可单独编辑布局、背景与模块。" });
+    this.contentEl.createEl("p", { text: "新主页默认是空白的。创建后点“添加模块”自行搭建；如需示例内容，可在编辑模式中选择“模板”。" });
     new Setting(this.contentEl).setName("主页名称").addText((text) => text.setPlaceholder("例如：工作、学习、旅行").onChange((value) => this.name = value));
     const actions = this.contentEl.createDiv({ cls: "modal-button-container" });
     new ButtonComponent(actions).setButtonText("取消").onClick(() => this.close());
@@ -1166,7 +1171,7 @@ class PageManagerModal extends Modal {
       await this.plugin.renamePage(this.plugin.config.pageName);
       new Notice("主页名称已更新。");
     }));
-    new Setting(this.contentEl).setName("新建主页").setDesc("从起步模板创建一张独立主页。").addButton((button) => button.setButtonText("新建").setCta().onClick(() => {
+    new Setting(this.contentEl).setName("新建主页").setDesc("创建一张空白、独立的主页；可在编辑模式中导入模板。").addButton((button) => button.setButtonText("新建").setCta().onClick(() => {
       this.close();
       new NewHomeModal(this.appRef, this.plugin).open();
     }));
