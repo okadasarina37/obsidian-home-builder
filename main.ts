@@ -553,7 +553,7 @@ export default class HomeBuilderPlugin extends Plugin {
     this.normalizePageOrder();
   }
 
-  async saveConfig(reason = "编辑主页") {
+  async saveConfig(reason = "编辑主页", refresh = true) {
     this.config.savedPages = this.config.savedPages.filter((page) => page.id !== this.config.pageId);
     const path = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
     const folder = path.split("/").slice(0, -1).join("/");
@@ -566,7 +566,7 @@ export default class HomeBuilderPlugin extends Plugin {
     await this.app.vault.adapter.write(path, serialized);
     this.lastSavedConfig = serialized;
     await this.saveData({ configPath: path, layoutMode: this.config.layoutMode, theme: this.config.theme });
-    await this.refreshViews();
+    if (refresh) await this.refreshViews();
   }
 
   async refreshViews() {
@@ -718,10 +718,12 @@ class HomeBuilderView extends ItemView {
     if (kind === "assets") created.options = { assetPath: "09_数字资产/资产" };
     if (kind === "aiusage") created.options = { usagePath: "03_生活记录/05_AI用量" };
     if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "当前位置", weatherText: "晴", weatherTemperature: "--°" };
-    this.plugin.resolvedLayout(this.device()).modules.unshift(created);
-    await this.plugin.saveConfig("添加模块：" + label);
-    new Notice(`已添加“${label}”。现在主页最上方已显示该模块及编辑、上移、下移、删除按钮。`);
-    window.setTimeout(() => this.contentEl.querySelector(".hb-module")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    // 手机端弹窗仍打开时重绘整个工作区会导致 iOS WebView 抛出 DOMException。
+    // 先保存而不广播刷新，随后只重绘当前主页；新模块追加在编辑区下方。
+    this.plugin.resolvedLayout(this.device()).modules.push(created);
+    await this.plugin.saveConfig("添加模块：" + label, false);
+    await this.render();
+    new Notice(`已添加“${label}”。模块已显示在下方，可直接编辑、上移、下移或删除。`);
   }
 
   private async renderModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
@@ -912,15 +914,13 @@ class ModulePickerModal extends Modal {
       button.onclick = async () => {
         if (this.busy) return;
         this.busy = true;
-        button.setText("正在添加…");
+        // 先关闭 Modal，再调用会触发当前视图重新绘制的添加操作。
+        // 这避免 iOS Obsidian 在 Modal 存在期间替换工作区 DOM 时的 SyntaxError。
+        this.close();
         try {
           await this.onPick(label, kind, queryKind);
-          this.close();
         } catch (error) {
-          this.busy = false;
-          button.empty();
-          button.createEl("strong", { text: label });
-          button.createEl("small", { text: `添加失败：${String(error)}` });
+          new Notice(`添加“${label}”失败：${String(error)}`, 10000);
         }
       };
     }

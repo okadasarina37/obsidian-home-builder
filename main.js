@@ -474,7 +474,7 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     }
     this.normalizePageOrder();
   }
-  async saveConfig(reason = "\u7F16\u8F91\u4E3B\u9875") {
+  async saveConfig(reason = "\u7F16\u8F91\u4E3B\u9875", refresh = true) {
     var _a;
     this.config.savedPages = this.config.savedPages.filter((page) => page.id !== this.config.pageId);
     const path = (0, import_obsidian.normalizePath)(this.config.configPath || DEFAULT_CONFIG_PATH);
@@ -488,7 +488,7 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     await this.app.vault.adapter.write(path, serialized);
     this.lastSavedConfig = serialized;
     await this.saveData({ configPath: path, layoutMode: this.config.layoutMode, theme: this.config.theme });
-    await this.refreshViews();
+    if (refresh) await this.refreshViews();
   }
   async refreshViews() {
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_HOME_BUILDER)) {
@@ -645,13 +645,10 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     if (kind === "assets") created.options = { assetPath: "09_\u6570\u5B57\u8D44\u4EA7/\u8D44\u4EA7" };
     if (kind === "aiusage") created.options = { usagePath: "03_\u751F\u6D3B\u8BB0\u5F55/05_AI\u7528\u91CF" };
     if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "\u5F53\u524D\u4F4D\u7F6E", weatherText: "\u6674", weatherTemperature: "--\xB0" };
-    this.plugin.resolvedLayout(this.device()).modules.unshift(created);
-    await this.plugin.saveConfig("\u6DFB\u52A0\u6A21\u5757\uFF1A" + label);
-    new import_obsidian.Notice(`\u5DF2\u6DFB\u52A0\u201C${label}\u201D\u3002\u73B0\u5728\u4E3B\u9875\u6700\u4E0A\u65B9\u5DF2\u663E\u793A\u8BE5\u6A21\u5757\u53CA\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u3001\u5220\u9664\u6309\u94AE\u3002`);
-    window.setTimeout(() => {
-      var _a;
-      return (_a = this.contentEl.querySelector(".hb-module")) == null ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 50);
+    this.plugin.resolvedLayout(this.device()).modules.push(created);
+    await this.plugin.saveConfig("\u6DFB\u52A0\u6A21\u5757\uFF1A" + label, false);
+    await this.render();
+    new import_obsidian.Notice(`\u5DF2\u6DFB\u52A0\u201C${label}\u201D\u3002\u6A21\u5757\u5DF2\u663E\u793A\u5728\u4E0B\u65B9\uFF0C\u53EF\u76F4\u63A5\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\u3002`);
   }
   async renderModule(grid, module2, layout) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;
@@ -874,15 +871,11 @@ var ModulePickerModal = class extends import_obsidian.Modal {
       button.onclick = async () => {
         if (this.busy) return;
         this.busy = true;
-        button.setText("\u6B63\u5728\u6DFB\u52A0\u2026");
+        this.close();
         try {
           await this.onPick(label, kind, queryKind);
-          this.close();
         } catch (error) {
-          this.busy = false;
-          button.empty();
-          button.createEl("strong", { text: label });
-          button.createEl("small", { text: `\u6DFB\u52A0\u5931\u8D25\uFF1A${String(error)}` });
+          new import_obsidian.Notice(`\u6DFB\u52A0\u201C${label}\u201D\u5931\u8D25\uFF1A${String(error)}`, 1e4);
         }
       };
     }
