@@ -610,13 +610,16 @@ class HomeBuilderView extends ItemView {
     for (const page of this.plugin.listPages()) pageSelect.createEl("option", { text: page.name, value: page.id });
     pageSelect.value = this.plugin.config.pageId;
     pageSelect.onchange = async () => { await this.plugin.switchPage(pageSelect.value); };
-    new ButtonComponent(actions).setIcon("plus").setTooltip("新建主页").onClick(() => new NewHomeModal(this.app, this.plugin).open());
-    new ButtonComponent(actions).setIcon("settings-2").setTooltip("管理主页").onClick(() => new PageManagerModal(this.app, this.plugin).open());
+    new ButtonComponent(actions).setButtonText("新建主页").setTooltip("新建主页").onClick(() => new NewHomeModal(this.app, this.plugin).open());
+    new ButtonComponent(actions).setButtonText("主页管理").setTooltip("管理主页").onClick(() => new PageManagerModal(this.app, this.plugin).open());
     new ButtonComponent(actions).setButtonText(this.editing ? "完成编辑" : "编辑主页（添加/删除/移动）").setCta().onClick(async () => {
       this.editing = !this.editing;
       await this.render();
     });
-    if (this.editing) this.renderEditorBar(contentEl);
+    if (this.editing) {
+      this.renderAddModuleCta(contentEl);
+      this.renderEditorBar(contentEl);
+    }
     else this.renderEditHint(contentEl);
     this.renderBanner(contentEl);
 
@@ -665,13 +668,21 @@ class HomeBuilderView extends ItemView {
       new ButtonComponent(bar).setButtonText(device === "mobile" ? "手机" : device === "tablet" ? "Pad" : "电脑")
         .setClass(this.device() === device ? "mod-cta" : "").onClick(async () => { this.selectedDevice = device; await this.render(); });
     }
-    const add = new ButtonComponent(bar).setButtonText("+ 添加模块").setCta();
-    add.onClick(() => this.openAddMenu(add.buttonEl));
     new ButtonComponent(bar).setButtonText("同步布局").setTooltip("将当前编辑设备的布局复制给其他设备").onClick(() => new ConfirmModal(this.app, "同步当前布局？", "会用当前设备的模块和排序覆盖其他设备布局。", () => this.plugin.syncLayoutFrom(this.device())).open());
     new ButtonComponent(bar).setButtonText("主题").onClick(() => new ThemeModal(this.app, this.plugin).open());
     new ButtonComponent(bar).setButtonText("横幅").onClick(() => new BannerModal(this.app, this.plugin).open());
     new ButtonComponent(bar).setButtonText("模板").onClick(() => new TemplateModal(this.app, this.plugin).open());
     new ButtonComponent(bar).setButtonText("导入导出").onClick(() => new LayoutTransferModal(this.app, this.plugin, this.device()).open());
+  }
+
+  private renderAddModuleCta(container: HTMLElement) {
+    const section = container.createDiv({ cls: "hb-add-module-section" });
+    const copy = section.createDiv();
+    copy.createEl("strong", { text: "1. 添加模块" });
+    copy.createEl("span", { text: "从快捷入口、待办、日历、天气等类型中选择。" });
+    const add = new ButtonComponent(section).setButtonText("＋ 添加模块").setCta();
+    add.buttonEl.setAttribute("aria-label", "添加模块");
+    add.onClick(() => this.openAddMenu(add.buttonEl));
   }
 
   private openAddMenu(anchor: HTMLElement) {

@@ -15,6 +15,10 @@
 .hb-actions, .hb-editor-bar, .hb-module-controls { display: flex; align-items: center; gap: 8px; }
 .hb-edit-hint { max-width: 1240px; margin: -8px auto 16px; padding: 12px 14px; border-left: 3px solid var(--hb-accent); color: var(--text-muted); background: color-mix(in srgb, var(--background-secondary), var(--hb-accent) 6%); border-radius: 0 10px 10px 0; line-height: 1.55; }
 .hb-edit-hint strong { color: var(--text-normal); }
+.hb-add-module-section { max-width: 1240px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; border: 2px solid var(--hb-accent); border-radius: 14px; background: color-mix(in srgb, var(--background-primary), var(--hb-accent) 10%); }
+.hb-add-module-section strong, .hb-add-module-section span { display: block; }
+.hb-add-module-section span { margin-top: 3px; color: var(--text-muted); font-size: .9em; }
+.hb-add-module-section button { min-height: 48px; white-space: nowrap; }
 .hb-actions button, .hb-editor-bar button, .hb-module-controls button { min-height: 36px; }
 .hb-page-select { min-height: 36px; max-width: 180px; border-radius: 8px; }
 .hb-editor-bar { max-width: 1240px; margin: 0 auto 16px; flex-wrap: wrap; padding: 10px; border: 1px solid color-mix(in srgb, var(--hb-accent), transparent 55%); border-radius: 12px; background: color-mix(in srgb, var(--background-primary), var(--hb-accent) 8%); }
@@ -85,6 +89,7 @@
   .hb-header { align-items: flex-start; flex-direction: column; }
   .hb-actions { width: 100%; flex-wrap: wrap; }
   .hb-actions > :last-child { flex: 1 1 220px; }
+  .hb-actions button { padding-inline: 10px; }
   .hb-actions button, .hb-page-select { min-height: 44px; }
   .hb-page-select { max-width: min(140px, 34vw); }
   .hb-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -95,6 +100,8 @@
   .hb-module-controls { width: 100%; gap: 8px; flex-wrap: wrap; justify-content: flex-start; }
   .hb-module-controls button { width: auto; min-height: 44px; padding-inline: 12px; }
   .hb-edit-hint { margin-top: -6px; }
+  .hb-add-module-section { align-items: stretch; flex-direction: column; padding: 14px; }
+  .hb-add-module-section button { width: 100%; min-height: 56px; font-size: 1.05rem; }
   .hb-shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .hb-shortcut { min-height: 48px; padding-inline: 4px; font-size: .82em; }
   .hb-banner { margin-bottom: 14px; }

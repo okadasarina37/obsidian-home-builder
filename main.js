@@ -538,14 +538,16 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     pageSelect.onchange = async () => {
       await this.plugin.switchPage(pageSelect.value);
     };
-    new import_obsidian.ButtonComponent(actions).setIcon("plus").setTooltip("\u65B0\u5EFA\u4E3B\u9875").onClick(() => new NewHomeModal(this.app, this.plugin).open());
-    new import_obsidian.ButtonComponent(actions).setIcon("settings-2").setTooltip("\u7BA1\u7406\u4E3B\u9875").onClick(() => new PageManagerModal(this.app, this.plugin).open());
+    new import_obsidian.ButtonComponent(actions).setButtonText("\u65B0\u5EFA\u4E3B\u9875").setTooltip("\u65B0\u5EFA\u4E3B\u9875").onClick(() => new NewHomeModal(this.app, this.plugin).open());
+    new import_obsidian.ButtonComponent(actions).setButtonText("\u4E3B\u9875\u7BA1\u7406").setTooltip("\u7BA1\u7406\u4E3B\u9875").onClick(() => new PageManagerModal(this.app, this.plugin).open());
     new import_obsidian.ButtonComponent(actions).setButtonText(this.editing ? "\u5B8C\u6210\u7F16\u8F91" : "\u7F16\u8F91\u4E3B\u9875\uFF08\u6DFB\u52A0/\u5220\u9664/\u79FB\u52A8\uFF09").setCta().onClick(async () => {
       this.editing = !this.editing;
       await this.render();
     });
-    if (this.editing) this.renderEditorBar(contentEl);
-    else this.renderEditHint(contentEl);
+    if (this.editing) {
+      this.renderAddModuleCta(contentEl);
+      this.renderEditorBar(contentEl);
+    } else this.renderEditHint(contentEl);
     this.renderBanner(contentEl);
     const grid = contentEl.createDiv({ cls: "hb-grid" });
     const layout = this.plugin.resolvedLayout(this.device());
@@ -591,13 +593,20 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
         await this.render();
       });
     }
-    const add = new import_obsidian.ButtonComponent(bar).setButtonText("+ \u6DFB\u52A0\u6A21\u5757").setCta();
-    add.onClick(() => this.openAddMenu(add.buttonEl));
     new import_obsidian.ButtonComponent(bar).setButtonText("\u540C\u6B65\u5E03\u5C40").setTooltip("\u5C06\u5F53\u524D\u7F16\u8F91\u8BBE\u5907\u7684\u5E03\u5C40\u590D\u5236\u7ED9\u5176\u4ED6\u8BBE\u5907").onClick(() => new ConfirmModal(this.app, "\u540C\u6B65\u5F53\u524D\u5E03\u5C40\uFF1F", "\u4F1A\u7528\u5F53\u524D\u8BBE\u5907\u7684\u6A21\u5757\u548C\u6392\u5E8F\u8986\u76D6\u5176\u4ED6\u8BBE\u5907\u5E03\u5C40\u3002", () => this.plugin.syncLayoutFrom(this.device())).open());
     new import_obsidian.ButtonComponent(bar).setButtonText("\u4E3B\u9898").onClick(() => new ThemeModal(this.app, this.plugin).open());
     new import_obsidian.ButtonComponent(bar).setButtonText("\u6A2A\u5E45").onClick(() => new BannerModal(this.app, this.plugin).open());
     new import_obsidian.ButtonComponent(bar).setButtonText("\u6A21\u677F").onClick(() => new TemplateModal(this.app, this.plugin).open());
     new import_obsidian.ButtonComponent(bar).setButtonText("\u5BFC\u5165\u5BFC\u51FA").onClick(() => new LayoutTransferModal(this.app, this.plugin, this.device()).open());
+  }
+  renderAddModuleCta(container) {
+    const section = container.createDiv({ cls: "hb-add-module-section" });
+    const copy = section.createDiv();
+    copy.createEl("strong", { text: "1. \u6DFB\u52A0\u6A21\u5757" });
+    copy.createEl("span", { text: "\u4ECE\u5FEB\u6377\u5165\u53E3\u3001\u5F85\u529E\u3001\u65E5\u5386\u3001\u5929\u6C14\u7B49\u7C7B\u578B\u4E2D\u9009\u62E9\u3002" });
+    const add = new import_obsidian.ButtonComponent(section).setButtonText("\uFF0B \u6DFB\u52A0\u6A21\u5757").setCta();
+    add.buttonEl.setAttribute("aria-label", "\u6DFB\u52A0\u6A21\u5757");
+    add.onClick(() => this.openAddMenu(add.buttonEl));
   }
   openAddMenu(anchor) {
     const menu = document.createElement("div");
