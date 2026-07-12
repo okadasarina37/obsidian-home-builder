@@ -1,0 +1,10 @@
+{
+  "id": "home-builder",
+  "name": "Home Builder",
+  "version": "0.1.0",
+  "minAppVersion": "1.7.0",
+  "description": "Build a responsive visual home dashboard with native Tasks and Dataview blocks.",
+  "author": "okadasarina37",
+  "authorUrl": "https://github.com/okadasarina37",
+  "isDesktopOnly": false
+}

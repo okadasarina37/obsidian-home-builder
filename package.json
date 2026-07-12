@@ -1,0 +1,16 @@
+{
+  "name": "obsidian-home-builder",
+  "version": "0.1.0",
+  "description": "A mobile-first visual home dashboard builder for Obsidian.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "esbuild main.ts --bundle --external:obsidian --format=cjs --target=es2018 --outfile=main.js --sourcemap --watch",
+    "build": "esbuild main.ts --bundle --external:obsidian --format=cjs --target=es2018 --outfile=main.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.24.0",
+    "obsidian": "latest",
+    "typescript": "^5.7.2"
+  }
+}
