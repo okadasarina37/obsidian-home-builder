@@ -30,6 +30,20 @@ var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).sl
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
 var isExternalUrl = (value) => /^(https?:)?\/\//i.test(value);
+var MODULE_CHOICES = [
+  ["\u5FEB\u6377\u5165\u53E3", "shortcuts", "\u94FE\u63A5\u4E0E\u5E38\u7528\u7B14\u8BB0\u5165\u53E3"],
+  ["\u4EFB\u52A1\u6E05\u5355", "markdown", "\u53EF\u89C6\u5316\u751F\u6210 Tasks \u67E5\u8BE2", "tasks"],
+  ["Dataview \u8868\u683C", "markdown", "\u53EF\u89C6\u5316\u751F\u6210\u6587\u4EF6\u5939\u8868\u683C", "dataview"],
+  ["\u81EA\u5B9A\u4E49\u67E5\u8BE2", "markdown", "\u7C98\u8D34 Tasks\u3001Dataview \u6216 DataviewJS", "raw"],
+  ["\u6587\u5B57\u6A21\u5757", "text", "\u6807\u9898\u3001\u8BF4\u660E\u6216\u63D0\u9192"],
+  ["\u6708\u5386", "calendar", "\u94FE\u63A5\u5230\u6BCF\u65E5\u7B14\u8BB0"],
+  ["\u5012\u6570\u65E5", "countdown", "\u663E\u793A\u8DDD\u79BB\u67D0\u4E2A\u65E5\u671F\u7684\u5929\u6570"],
+  ["\u56FE\u7247", "image", "\u5C55\u793A\u5E93\u5185\u56FE\u7247\u6216 URL"],
+  ["\u9605\u8BFB\u4E66\u67B6", "bookshelf", "\u8BFB\u53D6\u6B63\u5F0F\u4E66\u7C4D\u8BB0\u5F55"],
+  ["\u6570\u5B57\u8D44\u4EA7", "assets", "\u663E\u793A\u8FD1\u671F\u8D44\u4EA7\u4E0E\u5230\u671F\u65E5"],
+  ["AI \u7528\u91CF", "aiusage", "\u663E\u793A\u5DF2\u540C\u6B65\u7684 AI \u7528\u91CF\u8BB0\u5F55"],
+  ["\u5929\u6C14", "weather", "\u624B\u52A8\u8BB0\u5F55\u6216\u81EA\u52A8\u6293\u53D6\u5929\u6C14"]
+];
 function vaultImageUrl(app, path) {
   if (!path || isExternalUrl(path)) return path;
   const file = app.vault.getAbstractFileByPath(path);
@@ -611,67 +625,33 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     copy.createEl("span", { text: "\u4ECE\u5FEB\u6377\u5165\u53E3\u3001\u5F85\u529E\u3001\u65E5\u5386\u3001\u5929\u6C14\u7B49\u7C7B\u578B\u4E2D\u9009\u62E9\u3002" });
     const add = new import_obsidian.ButtonComponent(section).setButtonText("\uFF0B \u6DFB\u52A0\u6A21\u5757").setCta();
     add.buttonEl.setAttribute("aria-label", "\u6DFB\u52A0\u6A21\u5757");
-    add.onClick(() => this.openAddMenu(add.buttonEl));
+    add.onClick(() => new ModulePickerModal(this.app, async (label, kind, queryKind) => this.addModule(label, kind, queryKind)).open());
   }
-  openAddMenu(anchor) {
-    const menu = document.createElement("div");
-    menu.addClass("hb-add-menu");
-    const choices = [
-      ["\u5FEB\u6377\u5165\u53E3", "shortcuts", "\u94FE\u63A5\u4E0E\u5E38\u7528\u7B14\u8BB0\u5165\u53E3"],
-      ["\u4EFB\u52A1\u6E05\u5355", "markdown", "\u53EF\u89C6\u5316\u751F\u6210 Tasks \u67E5\u8BE2", "tasks"],
-      ["Dataview \u8868\u683C", "markdown", "\u53EF\u89C6\u5316\u751F\u6210\u6587\u4EF6\u5939\u8868\u683C", "dataview"],
-      ["\u81EA\u5B9A\u4E49\u67E5\u8BE2", "markdown", "\u7C98\u8D34 Tasks\u3001Dataview \u6216 DataviewJS", "raw"],
-      ["\u6587\u5B57\u6A21\u5757", "text", "\u6807\u9898\u3001\u8BF4\u660E\u6216\u63D0\u9192"],
-      ["\u6708\u5386", "calendar", "\u94FE\u63A5\u5230\u6BCF\u65E5\u7B14\u8BB0"],
-      ["\u5012\u6570\u65E5", "countdown", "\u663E\u793A\u8DDD\u79BB\u67D0\u4E2A\u65E5\u671F\u7684\u5929\u6570"],
-      ["\u56FE\u7247", "image", "\u5C55\u793A\u5E93\u5185\u56FE\u7247\u6216 URL"],
-      ["\u9605\u8BFB\u4E66\u67B6", "bookshelf", "\u8BFB\u53D6\u6B63\u5F0F\u4E66\u7C4D\u8BB0\u5F55"],
-      ["\u6570\u5B57\u8D44\u4EA7", "assets", "\u663E\u793A\u8FD1\u671F\u8D44\u4EA7\u4E0E\u5230\u671F\u65E5"],
-      ["AI \u7528\u91CF", "aiusage", "\u663E\u793A\u5DF2\u540C\u6B65\u7684 AI \u7528\u91CF\u8BB0\u5F55"],
-      ["\u5929\u6C14", "weather", "\u624B\u52A8\u8BB0\u5F55\u5F53\u524D\u4F4D\u7F6E\u5929\u6C14\uFF0C\u4E0D\u8054\u7F51"]
-    ];
-    for (const [label, kind, description, queryKind] of choices) {
-      const option = menu.createEl("button", { text: label });
-      option.createEl("small", { text: description });
-      option.onclick = async () => {
-        menu.remove();
-        const created = { id: newId(), kind, title: label, span: 1, queryKind };
-        if (kind === "shortcuts") created.shortcuts = [];
-        if (queryKind === "tasks") {
-          created.query = { limit: 8 };
-          created.markdown = taskMarkdown(created.query);
-        } else if (queryKind === "dataview") {
-          created.query = { limit: 8 };
-          created.markdown = dataviewMarkdown(created.query);
-        } else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
-        if (kind === "text") created.text = "\u5199\u4E00\u70B9\u63D0\u793A\u6216\u8BF4\u660E\u3002";
-        if (kind === "calendar") created.options = { dailyFolder: "02_\u65E5\u5386/\u6BCF\u65E5" };
-        if (kind === "countdown") created.options = { label: "\u5012\u6570\u65E5", targetDate: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) };
-        if (kind === "image") created.options = { imagePath: "", imageAlt: "\u4E3B\u9875\u56FE\u7247", imageFit: "cover" };
-        if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
-        if (kind === "assets") created.options = { assetPath: "09_\u6570\u5B57\u8D44\u4EA7/\u8D44\u4EA7" };
-        if (kind === "aiusage") created.options = { usagePath: "03_\u751F\u6D3B\u8BB0\u5F55/05_AI\u7528\u91CF" };
-        if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "\u5F53\u524D\u4F4D\u7F6E", weatherText: "\u6674", weatherTemperature: "--\xB0" };
-        this.plugin.resolvedLayout(this.device()).modules.unshift(created);
-        await this.plugin.saveConfig();
-        new import_obsidian.Notice(`\u5DF2\u6DFB\u52A0\u201C${label}\u201D\u6A21\u5757\u3002\u5B83\u73B0\u5728\u663E\u793A\u5728\u4E3B\u9875\u6700\u4E0A\u65B9\uFF1B\u70B9\u6A21\u5757\u4E0B\u65B9\u7684\u201C\u7F16\u8F91\u201D\u53EF\u7EE7\u7EED\u8BBE\u7F6E\u3002`);
-      };
-    }
-    document.body.appendChild(menu);
-    const rect = anchor.getBoundingClientRect();
-    const viewportPadding = 12;
-    menu.style.left = `${Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - viewportPadding - menu.offsetWidth)}px`;
-    const preferredTop = rect.bottom + 8;
-    const availableBelow = window.innerHeight - preferredTop - viewportPadding;
-    const availableAbove = rect.top - viewportPadding;
-    if (availableBelow < 220 && availableAbove > availableBelow) {
-      menu.style.top = `${viewportPadding}px`;
-      menu.style.maxHeight = `${Math.max(180, availableAbove)}px`;
-    } else {
-      menu.style.top = `${preferredTop}px`;
-      menu.style.maxHeight = `${Math.max(180, availableBelow)}px`;
-    }
-    window.setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
+  async addModule(label, kind, queryKind) {
+    const created = { id: newId(), kind, title: label, span: 1, queryKind };
+    if (kind === "shortcuts") created.shortcuts = [];
+    if (queryKind === "tasks") {
+      created.query = { limit: 8 };
+      created.markdown = taskMarkdown(created.query);
+    } else if (queryKind === "dataview") {
+      created.query = { limit: 8 };
+      created.markdown = dataviewMarkdown(created.query);
+    } else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
+    if (kind === "text") created.text = "\u5199\u4E00\u70B9\u63D0\u793A\u6216\u8BF4\u660E\u3002";
+    if (kind === "calendar") created.options = { dailyFolder: "02_\u65E5\u5386/\u6BCF\u65E5" };
+    if (kind === "countdown") created.options = { label: "\u5012\u6570\u65E5", targetDate: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) };
+    if (kind === "image") created.options = { imagePath: "", imageAlt: "\u4E3B\u9875\u56FE\u7247", imageFit: "cover" };
+    if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
+    if (kind === "assets") created.options = { assetPath: "09_\u6570\u5B57\u8D44\u4EA7/\u8D44\u4EA7" };
+    if (kind === "aiusage") created.options = { usagePath: "03_\u751F\u6D3B\u8BB0\u5F55/05_AI\u7528\u91CF" };
+    if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "\u5F53\u524D\u4F4D\u7F6E", weatherText: "\u6674", weatherTemperature: "--\xB0" };
+    this.plugin.resolvedLayout(this.device()).modules.unshift(created);
+    await this.plugin.saveConfig("\u6DFB\u52A0\u6A21\u5757\uFF1A" + label);
+    new import_obsidian.Notice(`\u5DF2\u6DFB\u52A0\u201C${label}\u201D\u3002\u73B0\u5728\u4E3B\u9875\u6700\u4E0A\u65B9\u5DF2\u663E\u793A\u8BE5\u6A21\u5757\u53CA\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u3001\u5220\u9664\u6309\u94AE\u3002`);
+    window.setTimeout(() => {
+      var _a;
+      return (_a = this.contentEl.querySelector(".hb-module")) == null ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   }
   async renderModule(grid, module2, layout) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;
@@ -872,6 +852,40 @@ LIMIT 1
   }
   openModuleEditor(module2) {
     new ModuleModal(this.app, module2, async () => await this.plugin.saveConfig()).open();
+  }
+};
+var ModulePickerModal = class extends import_obsidian.Modal {
+  constructor(appRef, onPick) {
+    super(appRef);
+    this.appRef = appRef;
+    this.onPick = onPick;
+    this.busy = false;
+  }
+  onOpen() {
+    this.contentEl.addClass("hb-modal", "hb-module-picker-modal");
+    this.contentEl.createEl("h2", { text: "\u6DFB\u52A0\u6A21\u5757" });
+    this.contentEl.createEl("p", { text: "\u70B9\u4E00\u79CD\u6A21\u5757\u540E\u4F1A\u7ACB\u5373\u6DFB\u52A0\u5230\u5F53\u524D\u4E3B\u9875\u9876\u90E8\uFF0C\u5E76\u56DE\u5230\u4E3B\u9875\u663E\u793A\u7F16\u8F91\u6309\u94AE\u3002", cls: "setting-item-description" });
+    const list = this.contentEl.createDiv({ cls: "hb-module-picker-list" });
+    for (const [label, kind, description, queryKind] of MODULE_CHOICES) {
+      const button = list.createEl("button", { cls: "hb-module-picker-item" });
+      button.createEl("strong", { text: label });
+      button.createEl("small", { text: description });
+      button.setAttribute("aria-label", `\u6DFB\u52A0${label}\u6A21\u5757`);
+      button.onclick = async () => {
+        if (this.busy) return;
+        this.busy = true;
+        button.setText("\u6B63\u5728\u6DFB\u52A0\u2026");
+        try {
+          await this.onPick(label, kind, queryKind);
+          this.close();
+        } catch (error) {
+          this.busy = false;
+          button.empty();
+          button.createEl("strong", { text: label });
+          button.createEl("small", { text: `\u6DFB\u52A0\u5931\u8D25\uFF1A${String(error)}` });
+        }
+      };
+    }
   }
 };
 var ModuleModal = class extends import_obsidian.Modal {

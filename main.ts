@@ -125,6 +125,20 @@ const newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
 const isExternalUrl = (value: string) => /^(https?:)?\/\//i.test(value);
+const MODULE_CHOICES: Array<[string, ModuleKind, string, HomeModule["queryKind"]?]> = [
+  ["快捷入口", "shortcuts", "链接与常用笔记入口"],
+  ["任务清单", "markdown", "可视化生成 Tasks 查询", "tasks"],
+  ["Dataview 表格", "markdown", "可视化生成文件夹表格", "dataview"],
+  ["自定义查询", "markdown", "粘贴 Tasks、Dataview 或 DataviewJS", "raw"],
+  ["文字模块", "text", "标题、说明或提醒"],
+  ["月历", "calendar", "链接到每日笔记"],
+  ["倒数日", "countdown", "显示距离某个日期的天数"],
+  ["图片", "image", "展示库内图片或 URL"],
+  ["阅读书架", "bookshelf", "读取正式书籍记录"],
+  ["数字资产", "assets", "显示近期资产与到期日"],
+  ["AI 用量", "aiusage", "显示已同步的 AI 用量记录"],
+  ["天气", "weather", "手动记录或自动抓取天气"],
+];
 
 function vaultImageUrl(app: App, path: string): string {
   if (!path || isExternalUrl(path)) return path;
@@ -687,64 +701,27 @@ class HomeBuilderView extends ItemView {
     copy.createEl("span", { text: "从快捷入口、待办、日历、天气等类型中选择。" });
     const add = new ButtonComponent(section).setButtonText("＋ 添加模块").setCta();
     add.buttonEl.setAttribute("aria-label", "添加模块");
-    add.onClick(() => this.openAddMenu(add.buttonEl));
+    add.onClick(() => new ModulePickerModal(this.app, async (label, kind, queryKind) => this.addModule(label, kind, queryKind)).open());
   }
 
-  private openAddMenu(anchor: HTMLElement) {
-    const menu = document.createElement("div");
-    menu.addClass("hb-add-menu");
-    const choices: Array<[string, ModuleKind, string, HomeModule["queryKind"]?]> = [
-      ["快捷入口", "shortcuts", "链接与常用笔记入口"],
-      ["任务清单", "markdown", "可视化生成 Tasks 查询", "tasks"],
-      ["Dataview 表格", "markdown", "可视化生成文件夹表格", "dataview"],
-      ["自定义查询", "markdown", "粘贴 Tasks、Dataview 或 DataviewJS", "raw"],
-      ["文字模块", "text", "标题、说明或提醒"],
-      ["月历", "calendar", "链接到每日笔记"],
-      ["倒数日", "countdown", "显示距离某个日期的天数"],
-      ["图片", "image", "展示库内图片或 URL"],
-      ["阅读书架", "bookshelf", "读取正式书籍记录"],
-      ["数字资产", "assets", "显示近期资产与到期日"],
-      ["AI 用量", "aiusage", "显示已同步的 AI 用量记录"],
-      ["天气", "weather", "手动记录当前位置天气，不联网"],
-    ];
-    for (const [label, kind, description, queryKind] of choices) {
-      const option = menu.createEl("button", { text: label });
-      option.createEl("small", { text: description });
-      option.onclick = async () => {
-        menu.remove();
-        const created: HomeModule = { id: newId(), kind, title: label, span: 1, queryKind };
-        if (kind === "shortcuts") created.shortcuts = [];
-        if (queryKind === "tasks") { created.query = { limit: 8 }; created.markdown = taskMarkdown(created.query); }
-        else if (queryKind === "dataview") { created.query = { limit: 8 }; created.markdown = dataviewMarkdown(created.query); }
-        else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
-        if (kind === "text") created.text = "写一点提示或说明。";
-        if (kind === "calendar") created.options = { dailyFolder: "02_日历/每日" };
-        if (kind === "countdown") created.options = { label: "倒数日", targetDate: new Date().toISOString().slice(0, 10) };
-        if (kind === "image") created.options = { imagePath: "", imageAlt: "主页图片", imageFit: "cover" };
-        if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
-        if (kind === "assets") created.options = { assetPath: "09_数字资产/资产" };
-        if (kind === "aiusage") created.options = { usagePath: "03_生活记录/05_AI用量" };
-        if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "当前位置", weatherText: "晴", weatherTemperature: "--°" };
-        this.plugin.resolvedLayout(this.device()).modules.unshift(created);
-        await this.plugin.saveConfig();
-        new Notice(`已添加“${label}”模块。它现在显示在主页最上方；点模块下方的“编辑”可继续设置。`);
-      };
-    }
-    document.body.appendChild(menu);
-    const rect = anchor.getBoundingClientRect();
-    const viewportPadding = 12;
-    menu.style.left = `${Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - viewportPadding - menu.offsetWidth)}px`;
-    const preferredTop = rect.bottom + 8;
-    const availableBelow = window.innerHeight - preferredTop - viewportPadding;
-    const availableAbove = rect.top - viewportPadding;
-    if (availableBelow < 220 && availableAbove > availableBelow) {
-      menu.style.top = `${viewportPadding}px`;
-      menu.style.maxHeight = `${Math.max(180, availableAbove)}px`;
-    } else {
-      menu.style.top = `${preferredTop}px`;
-      menu.style.maxHeight = `${Math.max(180, availableBelow)}px`;
-    }
-    window.setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
+  private async addModule(label: string, kind: ModuleKind, queryKind?: HomeModule["queryKind"]) {
+    const created: HomeModule = { id: newId(), kind, title: label, span: 1, queryKind };
+    if (kind === "shortcuts") created.shortcuts = [];
+    if (queryKind === "tasks") { created.query = { limit: 8 }; created.markdown = taskMarkdown(created.query); }
+    else if (queryKind === "dataview") { created.query = { limit: 8 }; created.markdown = dataviewMarkdown(created.query); }
+    else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
+    if (kind === "text") created.text = "写一点提示或说明。";
+    if (kind === "calendar") created.options = { dailyFolder: "02_日历/每日" };
+    if (kind === "countdown") created.options = { label: "倒数日", targetDate: new Date().toISOString().slice(0, 10) };
+    if (kind === "image") created.options = { imagePath: "", imageAlt: "主页图片", imageFit: "cover" };
+    if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
+    if (kind === "assets") created.options = { assetPath: "09_数字资产/资产" };
+    if (kind === "aiusage") created.options = { usagePath: "03_生活记录/05_AI用量" };
+    if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "当前位置", weatherText: "晴", weatherTemperature: "--°" };
+    this.plugin.resolvedLayout(this.device()).modules.unshift(created);
+    await this.plugin.saveConfig("添加模块：" + label);
+    new Notice(`已添加“${label}”。现在主页最上方已显示该模块及编辑、上移、下移、删除按钮。`);
+    window.setTimeout(() => this.contentEl.querySelector(".hb-module")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
   private async renderModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
@@ -911,6 +888,42 @@ class HomeBuilderView extends ItemView {
 
   private openModuleEditor(module: HomeModule) {
     new ModuleModal(this.app, module, async () => await this.plugin.saveConfig()).open();
+  }
+}
+
+class ModulePickerModal extends Modal {
+  private busy = false;
+
+  constructor(
+    private appRef: App,
+    private onPick: (label: string, kind: ModuleKind, queryKind?: HomeModule["queryKind"]) => Promise<void>,
+  ) { super(appRef); }
+
+  onOpen() {
+    this.contentEl.addClass("hb-modal", "hb-module-picker-modal");
+    this.contentEl.createEl("h2", { text: "添加模块" });
+    this.contentEl.createEl("p", { text: "点一种模块后会立即添加到当前主页顶部，并回到主页显示编辑按钮。", cls: "setting-item-description" });
+    const list = this.contentEl.createDiv({ cls: "hb-module-picker-list" });
+    for (const [label, kind, description, queryKind] of MODULE_CHOICES) {
+      const button = list.createEl("button", { cls: "hb-module-picker-item" });
+      button.createEl("strong", { text: label });
+      button.createEl("small", { text: description });
+      button.setAttribute("aria-label", `添加${label}模块`);
+      button.onclick = async () => {
+        if (this.busy) return;
+        this.busy = true;
+        button.setText("正在添加…");
+        try {
+          await this.onPick(label, kind, queryKind);
+          this.close();
+        } catch (error) {
+          this.busy = false;
+          button.empty();
+          button.createEl("strong", { text: label });
+          button.createEl("small", { text: `添加失败：${String(error)}` });
+        }
+      };
+    }
   }
 }
 

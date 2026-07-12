@@ -83,6 +83,12 @@
 .hb-picker-item { display: block; width: 100%; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--background-modifier-border); text-align: left; color: var(--text-normal); background: transparent; cursor: pointer; overflow-wrap: anywhere; }
 .hb-picker-item:hover, .hb-picker-item:focus-visible { background: var(--background-modifier-hover); outline: 2px solid var(--hb-accent); outline-offset: -2px; }
 .hb-picker-item small { display: block; margin-top: 4px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hb-module-picker-modal { width: min(620px, calc(100vw - 24px)); }
+.hb-module-picker-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; max-height: min(62vh, 560px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 2px; }
+.hb-module-picker-item { min-height: 84px; padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: 12px; text-align: left; color: var(--text-normal); background: var(--background-secondary); cursor: pointer; }
+.hb-module-picker-item:active, .hb-module-picker-item:hover, .hb-module-picker-item:focus-visible { border-color: var(--hb-accent); background: color-mix(in srgb, var(--background-secondary), var(--hb-accent) 9%); outline: 2px solid transparent; }
+.hb-module-picker-item strong, .hb-module-picker-item small { display: block; }
+.hb-module-picker-item small { margin-top: 5px; color: var(--text-muted); line-height: 1.35; }
 
 @media (max-width: 767px) {
   .home-builder-view { padding-inline: 12px; background-attachment: scroll; }
@@ -110,6 +116,9 @@
   .hb-banner-text { inset-inline: 16px; bottom: 16px; }
   .hb-calendar-day { min-height: 40px; }
   .hb-modal { min-width: 0; width: min(100%, 680px); }
+  .hb-module-picker-modal { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); overflow: hidden; }
+  .hb-module-picker-list { grid-template-columns: 1fr; max-height: calc(100dvh - 180px); padding-bottom: 12px; }
+  .hb-module-picker-item { min-height: 68px; }
 }
 
 @media (min-width: 768px) and (max-width: 1023px) {
