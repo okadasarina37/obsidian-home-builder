@@ -654,8 +654,18 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     }
     document.body.appendChild(menu);
     const rect = anchor.getBoundingClientRect();
-    menu.style.left = `${rect.left}px`;
-    menu.style.top = `${rect.bottom + 8}px`;
+    const viewportPadding = 12;
+    menu.style.left = `${Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - viewportPadding - menu.offsetWidth)}px`;
+    const preferredTop = rect.bottom + 8;
+    const availableBelow = window.innerHeight - preferredTop - viewportPadding;
+    const availableAbove = rect.top - viewportPadding;
+    if (availableBelow < 220 && availableAbove > availableBelow) {
+      menu.style.top = `${viewportPadding}px`;
+      menu.style.maxHeight = `${Math.max(180, availableAbove)}px`;
+    } else {
+      menu.style.top = `${preferredTop}px`;
+      menu.style.maxHeight = `${Math.max(180, availableBelow)}px`;
+    }
     window.setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
   }
   async renderModule(grid, module2, layout) {
@@ -707,6 +717,10 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
       action("arrow-down", "\u4E0B\u79FB").setDisabled(layout.modules.indexOf(module2) === layout.modules.length - 1).onClick(async () => {
         this.move(layout, module2, 1);
       });
+      action("trash-2", "\u5220\u9664").setWarning().onClick(() => new ConfirmModal(this.app, "\u5220\u9664\u8FD9\u4E2A\u6A21\u5757\uFF1F", "\u6A21\u5757\u7684\u6570\u636E\u548C\u5E03\u5C40\u5C06\u88AB\u79FB\u9664\u3002", async () => {
+        layout.modules.splice(layout.modules.indexOf(module2), 1);
+        await this.plugin.saveConfig();
+      }).open());
       action("columns-2", "\u8C03\u6574\u5BBD\u5EA6").onClick(async () => {
         var _a2;
         const max = this.device() === "mobile" ? 1 : this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
@@ -722,10 +736,6 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
         module2.hiddenOn = [...set];
         await this.plugin.saveConfig("\u66F4\u65B0\u8BBE\u5907\u53EF\u89C1\u6027");
       });
-      action("trash-2", "\u5220\u9664").setWarning().onClick(() => new ConfirmModal(this.app, "\u5220\u9664\u8FD9\u4E2A\u6A21\u5757\uFF1F", "\u6A21\u5757\u7684\u6570\u636E\u548C\u5E03\u5C40\u5C06\u88AB\u79FB\u9664\u3002", async () => {
-        layout.modules.splice(layout.modules.indexOf(module2), 1);
-        await this.plugin.saveConfig();
-      }).open());
     }
     const body = card.createDiv({ cls: "hb-module-body" });
     if (module2.kind === "shortcuts") {

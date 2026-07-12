@@ -727,8 +727,18 @@ class HomeBuilderView extends ItemView {
     }
     document.body.appendChild(menu);
     const rect = anchor.getBoundingClientRect();
-    menu.style.left = `${rect.left}px`;
-    menu.style.top = `${rect.bottom + 8}px`;
+    const viewportPadding = 12;
+    menu.style.left = `${Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - viewportPadding - menu.offsetWidth)}px`;
+    const preferredTop = rect.bottom + 8;
+    const availableBelow = window.innerHeight - preferredTop - viewportPadding;
+    const availableAbove = rect.top - viewportPadding;
+    if (availableBelow < 220 && availableAbove > availableBelow) {
+      menu.style.top = `${viewportPadding}px`;
+      menu.style.maxHeight = `${Math.max(180, availableAbove)}px`;
+    } else {
+      menu.style.top = `${preferredTop}px`;
+      menu.style.maxHeight = `${Math.max(180, availableBelow)}px`;
+    }
     window.setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
   }
 
@@ -772,6 +782,7 @@ class HomeBuilderView extends ItemView {
       });
       action("arrow-up", "上移").setDisabled(layout.modules.indexOf(module) === 0).onClick(async () => { this.move(layout, module, -1); });
       action("arrow-down", "下移").setDisabled(layout.modules.indexOf(module) === layout.modules.length - 1).onClick(async () => { this.move(layout, module, 1); });
+      action("trash-2", "删除").setWarning().onClick(() => new ConfirmModal(this.app, "删除这个模块？", "模块的数据和布局将被移除。", async () => { layout.modules.splice(layout.modules.indexOf(module), 1); await this.plugin.saveConfig(); }).open());
       action("columns-2", "调整宽度").onClick(async () => {
         const max = this.device() === "mobile" ? 1 : this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
         module.span = ((module.span ?? 1) % max + 1) as Span;
@@ -784,7 +795,6 @@ class HomeBuilderView extends ItemView {
         module.hiddenOn = [...set];
         await this.plugin.saveConfig("更新设备可见性");
       });
-      action("trash-2", "删除").setWarning().onClick(() => new ConfirmModal(this.app, "删除这个模块？", "模块的数据和布局将被移除。", async () => { layout.modules.splice(layout.modules.indexOf(module), 1); await this.plugin.saveConfig(); }).open());
     }
     const body = card.createDiv({ cls: "hb-module-body" });
     if (module.kind === "shortcuts") {
