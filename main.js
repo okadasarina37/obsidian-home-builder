@@ -540,21 +540,31 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     };
     new import_obsidian.ButtonComponent(actions).setIcon("plus").setTooltip("\u65B0\u5EFA\u4E3B\u9875").onClick(() => new NewHomeModal(this.app, this.plugin).open());
     new import_obsidian.ButtonComponent(actions).setIcon("settings-2").setTooltip("\u7BA1\u7406\u4E3B\u9875").onClick(() => new PageManagerModal(this.app, this.plugin).open());
-    new import_obsidian.ButtonComponent(actions).setButtonText(this.editing ? "\u5B8C\u6210" : "\u7F16\u8F91\u4E3B\u9875").setCta().onClick(async () => {
+    new import_obsidian.ButtonComponent(actions).setButtonText(this.editing ? "\u5B8C\u6210\u7F16\u8F91" : "\u7F16\u8F91\u4E3B\u9875\uFF08\u6DFB\u52A0/\u5220\u9664/\u79FB\u52A8\uFF09").setCta().onClick(async () => {
       this.editing = !this.editing;
       await this.render();
     });
     if (this.editing) this.renderEditorBar(contentEl);
+    else this.renderEditHint(contentEl);
     this.renderBanner(contentEl);
     const grid = contentEl.createDiv({ cls: "hb-grid" });
     const layout = this.plugin.resolvedLayout(this.device());
     if (!layout.modules.length) {
       const empty = grid.createDiv({ cls: "hb-empty" });
-      empty.createEl("p", { text: "\u8FD8\u6CA1\u6709\u6A21\u5757\u3002\u6DFB\u52A0\u4E00\u4E2A\u5FEB\u6377\u5165\u53E3\u6216\u67E5\u8BE2\u6A21\u5757\u5F00\u59CB\u5427\u3002" });
+      empty.createEl("p", { text: "\u8FD8\u6CA1\u6709\u6A21\u5757\u3002\u5148\u5F00\u59CB\u7F16\u8F91\uFF0C\u518D\u6DFB\u52A0\u5FEB\u6377\u5165\u53E3\u3001\u4EFB\u52A1\u6216\u65E5\u5386\u3002" });
+      new import_obsidian.ButtonComponent(empty).setButtonText("\u5F00\u59CB\u6DFB\u52A0\u6A21\u5757").setCta().onClick(async () => {
+        this.editing = true;
+        await this.render();
+      });
     }
     for (const module2 of layout.modules) {
       if (this.editing || !((_a = module2.hiddenOn) == null ? void 0 : _a.includes(this.device()))) await this.renderModule(grid, module2, layout);
     }
+  }
+  renderEditHint(container) {
+    const hint = container.createDiv({ cls: "hb-edit-hint" });
+    hint.createEl("strong", { text: "\u60F3\u6539\u4E3B\u9875\uFF1F" });
+    hint.createSpan({ text: " \u70B9\u4E0A\u65B9\u201C\u7F16\u8F91\u4E3B\u9875\uFF08\u6DFB\u52A0/\u5220\u9664/\u79FB\u52A8\uFF09\u201D\uFF0C\u518D\u6DFB\u52A0\u6A21\u5757\u6216\u4F7F\u7528\u6BCF\u4E2A\u6A21\u5757\u4E0B\u65B9\u7684\u64CD\u4F5C\u6309\u94AE\u3002" });
   }
   renderBanner(container) {
     const banner = this.plugin.config.banner;
@@ -573,14 +583,15 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
   }
   renderEditorBar(container) {
     const bar = container.createDiv({ cls: "hb-editor-bar" });
-    bar.createSpan({ text: "\u7F16\u8F91\u8BBE\u5907" });
+    bar.createEl("strong", { text: "\u7F16\u8F91\u6A21\u5F0F" });
+    bar.createSpan({ text: "\u5148\u6DFB\u52A0\u6A21\u5757\uFF1B\u6BCF\u5F20\u6A21\u5757\u4E0B\u65B9\u53EF\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\u3002" });
     for (const device of ["mobile", "tablet", "desktop"]) {
       new import_obsidian.ButtonComponent(bar).setButtonText(device === "mobile" ? "\u624B\u673A" : device === "tablet" ? "Pad" : "\u7535\u8111").setClass(this.device() === device ? "mod-cta" : "").onClick(async () => {
         this.selectedDevice = device;
         await this.render();
       });
     }
-    const add = new import_obsidian.ButtonComponent(bar).setButtonText("\u6DFB\u52A0\u6A21\u5757");
+    const add = new import_obsidian.ButtonComponent(bar).setButtonText("+ \u6DFB\u52A0\u6A21\u5757").setCta();
     add.onClick(() => this.openAddMenu(add.buttonEl));
     new import_obsidian.ButtonComponent(bar).setButtonText("\u540C\u6B65\u5E03\u5C40").setTooltip("\u5C06\u5F53\u524D\u7F16\u8F91\u8BBE\u5907\u7684\u5E03\u5C40\u590D\u5236\u7ED9\u5176\u4ED6\u8BBE\u5907").onClick(() => new ConfirmModal(this.app, "\u540C\u6B65\u5F53\u524D\u5E03\u5C40\uFF1F", "\u4F1A\u7528\u5F53\u524D\u8BBE\u5907\u7684\u6A21\u5757\u548C\u6392\u5E8F\u8986\u76D6\u5176\u4ED6\u8BBE\u5907\u5E03\u5C40\u3002", () => this.plugin.syncLayoutFrom(this.device())).open());
     new import_obsidian.ButtonComponent(bar).setButtonText("\u4E3B\u9898").onClick(() => new ThemeModal(this.app, this.plugin).open());
@@ -666,27 +677,34 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     titleRow.createEl("h2", { text: module2.title || "\u672A\u547D\u540D\u6A21\u5757" });
     if (this.editing) {
       const controls = titleRow.createDiv({ cls: "hb-module-controls" });
-      new import_obsidian.ButtonComponent(controls).setIcon("pencil").setTooltip("\u7F16\u8F91\u6A21\u5757").onClick(() => this.openModuleEditor(module2));
-      new import_obsidian.ButtonComponent(controls).setIcon("copy").setTooltip("\u590D\u5236\u6A21\u5757").onClick(async () => {
+      const action = (icon, label) => {
+        const button = new import_obsidian.ButtonComponent(controls).setTooltip(label);
+        if (this.device() === "mobile") button.setButtonText(label);
+        else button.setIcon(icon);
+        button.buttonEl.setAttribute("aria-label", label);
+        return button;
+      };
+      action("pencil", "\u7F16\u8F91").onClick(() => this.openModuleEditor(module2));
+      action("copy", "\u590D\u5236").onClick(async () => {
         const copy = clone(module2);
         copy.id = newId();
         copy.title = `${module2.title} \u526F\u672C`;
         layout.modules.splice(layout.modules.indexOf(module2) + 1, 0, copy);
         await this.plugin.saveConfig();
       });
-      new import_obsidian.ButtonComponent(controls).setIcon("arrow-up").setTooltip("\u4E0A\u79FB").setDisabled(layout.modules.indexOf(module2) === 0).onClick(async () => {
+      action("arrow-up", "\u4E0A\u79FB").setDisabled(layout.modules.indexOf(module2) === 0).onClick(async () => {
         this.move(layout, module2, -1);
       });
-      new import_obsidian.ButtonComponent(controls).setIcon("arrow-down").setTooltip("\u4E0B\u79FB").setDisabled(layout.modules.indexOf(module2) === layout.modules.length - 1).onClick(async () => {
+      action("arrow-down", "\u4E0B\u79FB").setDisabled(layout.modules.indexOf(module2) === layout.modules.length - 1).onClick(async () => {
         this.move(layout, module2, 1);
       });
-      new import_obsidian.ButtonComponent(controls).setIcon("columns-2").setTooltip("\u5207\u6362\u5BBD\u5EA6").onClick(async () => {
+      action("columns-2", "\u8C03\u6574\u5BBD\u5EA6").onClick(async () => {
         var _a2;
         const max = this.device() === "mobile" ? 1 : this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
         module2.span = ((_a2 = module2.span) != null ? _a2 : 1) % max + 1;
         await this.plugin.saveConfig("\u8C03\u6574\u6A21\u5757\u5BBD\u5EA6");
       });
-      new import_obsidian.ButtonComponent(controls).setIcon(hidden ? "eye" : "eye-off").setTooltip(hidden ? "\u5728\u6B64\u8BBE\u5907\u663E\u793A" : "\u5728\u6B64\u8BBE\u5907\u9690\u85CF").onClick(async () => {
+      action(hidden ? "eye" : "eye-off", hidden ? "\u663E\u793A\u6A21\u5757" : "\u9690\u85CF\u6A21\u5757").onClick(async () => {
         var _a2;
         const device = this.device();
         const set = new Set((_a2 = module2.hiddenOn) != null ? _a2 : []);
@@ -695,7 +713,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
         module2.hiddenOn = [...set];
         await this.plugin.saveConfig("\u66F4\u65B0\u8BBE\u5907\u53EF\u89C1\u6027");
       });
-      new import_obsidian.ButtonComponent(controls).setIcon("trash-2").setTooltip("\u5220\u9664\u6A21\u5757").onClick(() => new ConfirmModal(this.app, "\u5220\u9664\u8FD9\u4E2A\u6A21\u5757\uFF1F", "\u6A21\u5757\u7684\u6570\u636E\u548C\u5E03\u5C40\u5C06\u88AB\u79FB\u9664\u3002", async () => {
+      action("trash-2", "\u5220\u9664").setWarning().onClick(() => new ConfirmModal(this.app, "\u5220\u9664\u8FD9\u4E2A\u6A21\u5757\uFF1F", "\u6A21\u5757\u7684\u6570\u636E\u548C\u5E03\u5C40\u5C06\u88AB\u79FB\u9664\u3002", async () => {
         layout.modules.splice(layout.modules.indexOf(module2), 1);
         await this.plugin.saveConfig();
       }).open());

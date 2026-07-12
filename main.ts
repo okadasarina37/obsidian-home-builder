@@ -612,22 +612,33 @@ class HomeBuilderView extends ItemView {
     pageSelect.onchange = async () => { await this.plugin.switchPage(pageSelect.value); };
     new ButtonComponent(actions).setIcon("plus").setTooltip("新建主页").onClick(() => new NewHomeModal(this.app, this.plugin).open());
     new ButtonComponent(actions).setIcon("settings-2").setTooltip("管理主页").onClick(() => new PageManagerModal(this.app, this.plugin).open());
-    new ButtonComponent(actions).setButtonText(this.editing ? "完成" : "编辑主页").setCta().onClick(async () => {
+    new ButtonComponent(actions).setButtonText(this.editing ? "完成编辑" : "编辑主页（添加/删除/移动）").setCta().onClick(async () => {
       this.editing = !this.editing;
       await this.render();
     });
     if (this.editing) this.renderEditorBar(contentEl);
+    else this.renderEditHint(contentEl);
     this.renderBanner(contentEl);
 
     const grid = contentEl.createDiv({ cls: "hb-grid" });
     const layout = this.plugin.resolvedLayout(this.device());
     if (!layout.modules.length) {
       const empty = grid.createDiv({ cls: "hb-empty" });
-      empty.createEl("p", { text: "还没有模块。添加一个快捷入口或查询模块开始吧。" });
+      empty.createEl("p", { text: "还没有模块。先开始编辑，再添加快捷入口、任务或日历。" });
+      new ButtonComponent(empty).setButtonText("开始添加模块").setCta().onClick(async () => {
+        this.editing = true;
+        await this.render();
+      });
     }
     for (const module of layout.modules) {
       if (this.editing || !module.hiddenOn?.includes(this.device())) await this.renderModule(grid, module, layout);
     }
+  }
+
+  private renderEditHint(container: HTMLElement) {
+    const hint = container.createDiv({ cls: "hb-edit-hint" });
+    hint.createEl("strong", { text: "想改主页？" });
+    hint.createSpan({ text: " 点上方“编辑主页（添加/删除/移动）”，再添加模块或使用每个模块下方的操作按钮。" });
   }
 
   private renderBanner(container: HTMLElement) {
@@ -648,12 +659,13 @@ class HomeBuilderView extends ItemView {
 
   private renderEditorBar(container: HTMLElement) {
     const bar = container.createDiv({ cls: "hb-editor-bar" });
-    bar.createSpan({ text: "编辑设备" });
+    bar.createEl("strong", { text: "编辑模式" });
+    bar.createSpan({ text: "先添加模块；每张模块下方可编辑、上移、下移或删除。" });
     for (const device of ["mobile", "tablet", "desktop"] as Device[]) {
       new ButtonComponent(bar).setButtonText(device === "mobile" ? "手机" : device === "tablet" ? "Pad" : "电脑")
         .setClass(this.device() === device ? "mod-cta" : "").onClick(async () => { this.selectedDevice = device; await this.render(); });
     }
-    const add = new ButtonComponent(bar).setButtonText("添加模块");
+    const add = new ButtonComponent(bar).setButtonText("+ 添加模块").setCta();
     add.onClick(() => this.openAddMenu(add.buttonEl));
     new ButtonComponent(bar).setButtonText("同步布局").setTooltip("将当前编辑设备的布局复制给其他设备").onClick(() => new ConfirmModal(this.app, "同步当前布局？", "会用当前设备的模块和排序覆盖其他设备布局。", () => this.plugin.syncLayoutFrom(this.device())).open());
     new ButtonComponent(bar).setButtonText("主题").onClick(() => new ThemeModal(this.app, this.plugin).open());
@@ -732,29 +744,36 @@ class HomeBuilderView extends ItemView {
     titleRow.createEl("h2", { text: module.title || "未命名模块" });
     if (this.editing) {
       const controls = titleRow.createDiv({ cls: "hb-module-controls" });
-      new ButtonComponent(controls).setIcon("pencil").setTooltip("编辑模块").onClick(() => this.openModuleEditor(module));
-      new ButtonComponent(controls).setIcon("copy").setTooltip("复制模块").onClick(async () => {
+      const action = (icon: string, label: string) => {
+        const button = new ButtonComponent(controls).setTooltip(label);
+        if (this.device() === "mobile") button.setButtonText(label);
+        else button.setIcon(icon);
+        button.buttonEl.setAttribute("aria-label", label);
+        return button;
+      };
+      action("pencil", "编辑").onClick(() => this.openModuleEditor(module));
+      action("copy", "复制").onClick(async () => {
         const copy = clone(module);
         copy.id = newId();
         copy.title = `${module.title} 副本`;
         layout.modules.splice(layout.modules.indexOf(module) + 1, 0, copy);
         await this.plugin.saveConfig();
       });
-      new ButtonComponent(controls).setIcon("arrow-up").setTooltip("上移").setDisabled(layout.modules.indexOf(module) === 0).onClick(async () => { this.move(layout, module, -1); });
-      new ButtonComponent(controls).setIcon("arrow-down").setTooltip("下移").setDisabled(layout.modules.indexOf(module) === layout.modules.length - 1).onClick(async () => { this.move(layout, module, 1); });
-      new ButtonComponent(controls).setIcon("columns-2").setTooltip("切换宽度").onClick(async () => {
+      action("arrow-up", "上移").setDisabled(layout.modules.indexOf(module) === 0).onClick(async () => { this.move(layout, module, -1); });
+      action("arrow-down", "下移").setDisabled(layout.modules.indexOf(module) === layout.modules.length - 1).onClick(async () => { this.move(layout, module, 1); });
+      action("columns-2", "调整宽度").onClick(async () => {
         const max = this.device() === "mobile" ? 1 : this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
         module.span = ((module.span ?? 1) % max + 1) as Span;
         await this.plugin.saveConfig("调整模块宽度");
       });
-      new ButtonComponent(controls).setIcon(hidden ? "eye" : "eye-off").setTooltip(hidden ? "在此设备显示" : "在此设备隐藏").onClick(async () => {
+      action(hidden ? "eye" : "eye-off", hidden ? "显示模块" : "隐藏模块").onClick(async () => {
         const device = this.device();
         const set = new Set(module.hiddenOn ?? []);
         if (set.has(device)) set.delete(device); else set.add(device);
         module.hiddenOn = [...set];
         await this.plugin.saveConfig("更新设备可见性");
       });
-      new ButtonComponent(controls).setIcon("trash-2").setTooltip("删除模块").onClick(() => new ConfirmModal(this.app, "删除这个模块？", "模块的数据和布局将被移除。", async () => { layout.modules.splice(layout.modules.indexOf(module), 1); await this.plugin.saveConfig(); }).open());
+      action("trash-2", "删除").setWarning().onClick(() => new ConfirmModal(this.app, "删除这个模块？", "模块的数据和布局将被移除。", async () => { layout.modules.splice(layout.modules.indexOf(module), 1); await this.plugin.saveConfig(); }).open());
     }
     const body = card.createDiv({ cls: "hb-module-body" });
     if (module.kind === "shortcuts") {

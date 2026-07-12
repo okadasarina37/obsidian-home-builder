@@ -13,10 +13,13 @@
 .hb-heading h1 { margin: 0; font-size: clamp(28px, 4vw, 42px); letter-spacing: -.04em; }
 .hb-status, .hb-muted { color: var(--text-muted); font-size: .85em; }
 .hb-actions, .hb-editor-bar, .hb-module-controls { display: flex; align-items: center; gap: 8px; }
+.hb-edit-hint { max-width: 1240px; margin: -8px auto 16px; padding: 12px 14px; border-left: 3px solid var(--hb-accent); color: var(--text-muted); background: color-mix(in srgb, var(--background-secondary), var(--hb-accent) 6%); border-radius: 0 10px 10px 0; line-height: 1.55; }
+.hb-edit-hint strong { color: var(--text-normal); }
 .hb-actions button, .hb-editor-bar button, .hb-module-controls button { min-height: 36px; }
 .hb-page-select { min-height: 36px; max-width: 180px; border-radius: 8px; }
 .hb-editor-bar { max-width: 1240px; margin: 0 auto 16px; flex-wrap: wrap; padding: 10px; border: 1px solid color-mix(in srgb, var(--hb-accent), transparent 55%); border-radius: 12px; background: color-mix(in srgb, var(--background-primary), var(--hb-accent) 8%); }
 .hb-editor-bar > span { color: var(--text-muted); font-size: .85em; margin-right: 4px; }
+.hb-editor-bar > strong { width: 100%; font-size: 1rem; }
 .hb-banner { position: relative; isolation: isolate; height: var(--hb-banner-height); max-width: 1240px; margin: 0 auto 20px; overflow: hidden; color: #fff; background: var(--background-secondary); }
 .hb-banner-rounded { border-radius: 18px; }
 .hb-banner-image { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -79,15 +82,19 @@
 
 @media (max-width: 767px) {
   .home-builder-view { padding-inline: 12px; background-attachment: scroll; }
-  .hb-header { align-items: flex-start; }
+  .hb-header { align-items: flex-start; flex-direction: column; }
+  .hb-actions { width: 100%; flex-wrap: wrap; }
+  .hb-actions > :last-child { flex: 1 1 220px; }
   .hb-actions button, .hb-page-select { min-height: 44px; }
   .hb-page-select { max-width: min(140px, 34vw); }
   .hb-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .hb-span-2, .hb-span-3, .hb-span-4 { grid-column: auto; }
   .hb-module { border-radius: 14px; padding: 14px; }
   .hb-editor-bar button { min-height: 44px; }
-  .hb-module-controls { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-  .hb-module-controls button { width: 44px; min-height: 44px; }
+  .hb-module-title { align-items: flex-start; flex-direction: column; }
+  .hb-module-controls { width: 100%; gap: 8px; flex-wrap: wrap; justify-content: flex-start; }
+  .hb-module-controls button { width: auto; min-height: 44px; padding-inline: 12px; }
+  .hb-edit-hint { margin-top: -6px; }
   .hb-shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .hb-shortcut { min-height: 48px; padding-inline: 4px; font-size: .82em; }
   .hb-banner { margin-bottom: 14px; }
