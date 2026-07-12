@@ -27,6 +27,7 @@ var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+var clone = (value) => JSON.parse(JSON.stringify(value));
 function starterModules() {
   return [
     {
@@ -62,6 +63,9 @@ function defaultConfig() {
     version: 1,
     layoutMode: "independent",
     configPath: DEFAULT_CONFIG_PATH,
+    pageId: newId(),
+    pageName: "\u4E3B\u9875",
+    savedPages: [],
     theme: { backgroundType: "none", backgroundValue: "", accent: "#7c3aed", cardOpacity: 0.88 },
     layouts: {
       mobile: { modules: starterModules() },
@@ -80,6 +84,7 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     this.registerView(VIEW_TYPE_HOME_BUILDER, (leaf) => new HomeBuilderView(leaf, this));
     this.addRibbonIcon("layout-dashboard", "Open Home Builder", () => void this.openHome());
     this.addCommand({ id: "open-home", name: "Open Home Builder", callback: () => void this.openHome() });
+    this.addCommand({ id: "new-home", name: "Create a new Home Builder page", callback: () => new NewHomeModal(this.app, this).open() });
     this.addSettingTab(new HomeBuilderSettings(this.app, this));
   }
   onunload() {
@@ -102,20 +107,63 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     if (this.config.layoutMode === "hybrid") return this.config.layouts[device].modules.length ? this.config.layouts[device] : this.config.layouts.desktop;
     return this.config.layouts[device];
   }
+  listPages() {
+    return [{ id: this.config.pageId, name: this.config.pageName }, ...this.config.savedPages.map(({ id, name }) => ({ id, name }))];
+  }
+  activeSnapshot() {
+    return {
+      id: this.config.pageId,
+      name: this.config.pageName,
+      layoutMode: this.config.layoutMode,
+      theme: clone(this.config.theme),
+      layouts: clone(this.config.layouts)
+    };
+  }
+  applySnapshot(page) {
+    this.config.pageId = page.id;
+    this.config.pageName = page.name;
+    this.config.layoutMode = page.layoutMode;
+    this.config.theme = clone(page.theme);
+    this.config.layouts = clone(page.layouts);
+  }
+  async createPage(name) {
+    const cleanName = name.trim() || "\u65B0\u4E3B\u9875";
+    this.config.savedPages = [...this.config.savedPages.filter((page) => page.id !== this.config.pageId), this.activeSnapshot()];
+    const fresh = defaultConfig();
+    fresh.pageName = cleanName;
+    this.config.pageId = fresh.pageId;
+    this.config.pageName = fresh.pageName;
+    this.config.layoutMode = fresh.layoutMode;
+    this.config.theme = fresh.theme;
+    this.config.layouts = fresh.layouts;
+    await this.saveConfig();
+    new import_obsidian.Notice(`\u5DF2\u65B0\u5EFA\u4E3B\u9875\uFF1A${cleanName}`);
+  }
+  async switchPage(id) {
+    if (id === this.config.pageId) return;
+    const target = this.config.savedPages.find((page) => page.id === id);
+    if (!target) return;
+    const current = this.activeSnapshot();
+    this.config.savedPages = this.config.savedPages.map((page) => page.id === id ? current : page);
+    this.applySnapshot(target);
+    await this.saveConfig();
+  }
   async loadConfig() {
+    var _a, _b;
     const saved = await this.loadData();
-    this.config = { ...defaultConfig(), ...saved, theme: { ...defaultConfig().theme, ...saved == null ? void 0 : saved.theme } };
+    this.config = { ...defaultConfig(), ...saved, theme: { ...defaultConfig().theme, ...saved == null ? void 0 : saved.theme }, savedPages: (_a = saved == null ? void 0 : saved.savedPages) != null ? _a : [] };
     const path = (0, import_obsidian.normalizePath)(this.config.configPath || DEFAULT_CONFIG_PATH);
     try {
       if (await this.app.vault.adapter.exists(path)) {
         const fromVault = JSON.parse(await this.app.vault.adapter.read(path));
-        this.config = { ...this.config, ...fromVault, theme: { ...this.config.theme, ...fromVault.theme } };
+        this.config = { ...this.config, ...fromVault, theme: { ...this.config.theme, ...fromVault.theme }, savedPages: (_b = fromVault.savedPages) != null ? _b : [] };
       }
     } catch (error) {
       new import_obsidian.Notice(`Home Builder: \u65E0\u6CD5\u8BFB\u53D6\u4E3B\u9875\u914D\u7F6E\uFF1A${String(error)}`);
     }
   }
   async saveConfig() {
+    this.config.savedPages = this.config.savedPages.filter((page) => page.id !== this.config.pageId);
     const path = (0, import_obsidian.normalizePath)(this.config.configPath || DEFAULT_CONFIG_PATH);
     const folder = path.split("/").slice(0, -1).join("/");
     if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
@@ -173,9 +221,16 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     }
     const header = contentEl.createDiv({ cls: "hb-header" });
     const heading = header.createDiv({ cls: "hb-heading" });
-    heading.createEl("h1", { text: "\u4E3B\u9875" });
+    heading.createEl("h1", { text: this.plugin.config.pageName });
     heading.createEl("span", { text: this.editing ? "\u7F16\u8F91\u4E2D" : "Home Builder", cls: "hb-status" });
     const actions = header.createDiv({ cls: "hb-actions" });
+    const pageSelect = actions.createEl("select", { cls: "hb-page-select", attr: { "aria-label": "\u5207\u6362\u4E3B\u9875" } });
+    for (const page of this.plugin.listPages()) pageSelect.createEl("option", { text: page.name, value: page.id });
+    pageSelect.value = this.plugin.config.pageId;
+    pageSelect.onchange = async () => {
+      await this.plugin.switchPage(pageSelect.value);
+    };
+    new import_obsidian.ButtonComponent(actions).setIcon("plus").setTooltip("\u65B0\u5EFA\u4E3B\u9875").onClick(() => new NewHomeModal(this.app, this.plugin).open());
     new import_obsidian.ButtonComponent(actions).setButtonText(this.editing ? "\u5B8C\u6210" : "\u7F16\u8F91\u4E3B\u9875").setCta().onClick(async () => {
       this.editing = !this.editing;
       await this.render();
@@ -346,6 +401,26 @@ var ThemeModal = class extends import_obsidian.Modal {
     new import_obsidian.ButtonComponent(actions).setButtonText("\u53D6\u6D88").onClick(() => this.close());
     new import_obsidian.ButtonComponent(actions).setButtonText("\u4FDD\u5B58").setCta().onClick(async () => {
       await this.plugin.saveConfig();
+      this.close();
+    });
+  }
+};
+var NewHomeModal = class extends import_obsidian.Modal {
+  constructor(appRef, plugin) {
+    super(appRef);
+    this.appRef = appRef;
+    this.plugin = plugin;
+    this.name = "";
+  }
+  onOpen() {
+    this.contentEl.addClass("hb-modal");
+    this.contentEl.createEl("h2", { text: "\u65B0\u5EFA\u4E3B\u9875" });
+    this.contentEl.createEl("p", { text: "\u65B0\u4E3B\u9875\u4ECE\u8D77\u6B65\u6A21\u677F\u5F00\u59CB\uFF0C\u4E4B\u540E\u53EF\u5355\u72EC\u7F16\u8F91\u5E03\u5C40\u3001\u80CC\u666F\u4E0E\u6A21\u5757\u3002" });
+    new import_obsidian.Setting(this.contentEl).setName("\u4E3B\u9875\u540D\u79F0").addText((text) => text.setPlaceholder("\u4F8B\u5982\uFF1A\u5DE5\u4F5C\u3001\u5B66\u4E60\u3001\u65C5\u884C").onChange((value) => this.name = value));
+    const actions = this.contentEl.createDiv({ cls: "modal-button-container" });
+    new import_obsidian.ButtonComponent(actions).setButtonText("\u53D6\u6D88").onClick(() => this.close());
+    new import_obsidian.ButtonComponent(actions).setButtonText("\u65B0\u5EFA").setCta().onClick(async () => {
+      await this.plugin.createPage(this.name);
       this.close();
     });
   }

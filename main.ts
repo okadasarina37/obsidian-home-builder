@@ -44,6 +44,9 @@ interface HomeConfig {
   version: 1;
   layoutMode: LayoutMode;
   configPath: string;
+  pageId: string;
+  pageName: string;
+  savedPages: SavedHomePage[];
   theme: {
     backgroundType: "none" | "color" | "image" | "gradient";
     backgroundValue: string;
@@ -53,7 +56,16 @@ interface HomeConfig {
   layouts: Record<Device, Layout>;
 }
 
+interface SavedHomePage {
+  id: string;
+  name: string;
+  layoutMode: LayoutMode;
+  theme: HomeConfig["theme"];
+  layouts: Record<Device, Layout>;
+}
+
 const newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 function starterModules(): HomeModule[] {
   return [
@@ -91,6 +103,9 @@ function defaultConfig(): HomeConfig {
     version: 1,
     layoutMode: "independent",
     configPath: DEFAULT_CONFIG_PATH,
+    pageId: newId(),
+    pageName: "主页",
+    savedPages: [],
     theme: { backgroundType: "none", backgroundValue: "", accent: "#7c3aed", cardOpacity: 0.88 },
     layouts: {
       mobile: { modules: starterModules() },
@@ -108,6 +123,7 @@ export default class HomeBuilderPlugin extends Plugin {
     this.registerView(VIEW_TYPE_HOME_BUILDER, (leaf) => new HomeBuilderView(leaf, this));
     this.addRibbonIcon("layout-dashboard", "Open Home Builder", () => void this.openHome());
     this.addCommand({ id: "open-home", name: "Open Home Builder", callback: () => void this.openHome() });
+    this.addCommand({ id: "new-home", name: "Create a new Home Builder page", callback: () => new NewHomeModal(this.app, this).open() });
     this.addSettingTab(new HomeBuilderSettings(this.app, this));
   }
 
@@ -137,14 +153,60 @@ export default class HomeBuilderPlugin extends Plugin {
     return this.config.layouts[device];
   }
 
+  listPages(): Array<{ id: string; name: string }> {
+    return [{ id: this.config.pageId, name: this.config.pageName }, ...this.config.savedPages.map(({ id, name }) => ({ id, name }))];
+  }
+
+  private activeSnapshot(): SavedHomePage {
+    return {
+      id: this.config.pageId,
+      name: this.config.pageName,
+      layoutMode: this.config.layoutMode,
+      theme: clone(this.config.theme),
+      layouts: clone(this.config.layouts),
+    };
+  }
+
+  private applySnapshot(page: SavedHomePage) {
+    this.config.pageId = page.id;
+    this.config.pageName = page.name;
+    this.config.layoutMode = page.layoutMode;
+    this.config.theme = clone(page.theme);
+    this.config.layouts = clone(page.layouts);
+  }
+
+  async createPage(name: string) {
+    const cleanName = name.trim() || "新主页";
+    this.config.savedPages = [...this.config.savedPages.filter((page) => page.id !== this.config.pageId), this.activeSnapshot()];
+    const fresh = defaultConfig();
+    fresh.pageName = cleanName;
+    this.config.pageId = fresh.pageId;
+    this.config.pageName = fresh.pageName;
+    this.config.layoutMode = fresh.layoutMode;
+    this.config.theme = fresh.theme;
+    this.config.layouts = fresh.layouts;
+    await this.saveConfig();
+    new Notice(`已新建主页：${cleanName}`);
+  }
+
+  async switchPage(id: string) {
+    if (id === this.config.pageId) return;
+    const target = this.config.savedPages.find((page) => page.id === id);
+    if (!target) return;
+    const current = this.activeSnapshot();
+    this.config.savedPages = this.config.savedPages.map((page) => page.id === id ? current : page);
+    this.applySnapshot(target);
+    await this.saveConfig();
+  }
+
   async loadConfig() {
     const saved = await this.loadData() as Partial<HomeConfig> | null;
-    this.config = { ...defaultConfig(), ...saved, theme: { ...defaultConfig().theme, ...saved?.theme } };
+    this.config = { ...defaultConfig(), ...saved, theme: { ...defaultConfig().theme, ...saved?.theme }, savedPages: saved?.savedPages ?? [] };
     const path = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
     try {
       if (await this.app.vault.adapter.exists(path)) {
         const fromVault = JSON.parse(await this.app.vault.adapter.read(path)) as HomeConfig;
-        this.config = { ...this.config, ...fromVault, theme: { ...this.config.theme, ...fromVault.theme } };
+        this.config = { ...this.config, ...fromVault, theme: { ...this.config.theme, ...fromVault.theme }, savedPages: fromVault.savedPages ?? [] };
       }
     } catch (error) {
       new Notice(`Home Builder: 无法读取主页配置：${String(error)}`);
@@ -152,6 +214,7 @@ export default class HomeBuilderPlugin extends Plugin {
   }
 
   async saveConfig() {
+    this.config.savedPages = this.config.savedPages.filter((page) => page.id !== this.config.pageId);
     const path = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
     const folder = path.split("/").slice(0, -1).join("/");
     if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
@@ -206,9 +269,14 @@ class HomeBuilderView extends ItemView {
 
     const header = contentEl.createDiv({ cls: "hb-header" });
     const heading = header.createDiv({ cls: "hb-heading" });
-    heading.createEl("h1", { text: "主页" });
+    heading.createEl("h1", { text: this.plugin.config.pageName });
     heading.createEl("span", { text: this.editing ? "编辑中" : "Home Builder", cls: "hb-status" });
     const actions = header.createDiv({ cls: "hb-actions" });
+    const pageSelect = actions.createEl("select", { cls: "hb-page-select", attr: { "aria-label": "切换主页" } });
+    for (const page of this.plugin.listPages()) pageSelect.createEl("option", { text: page.name, value: page.id });
+    pageSelect.value = this.plugin.config.pageId;
+    pageSelect.onchange = async () => { await this.plugin.switchPage(pageSelect.value); };
+    new ButtonComponent(actions).setIcon("plus").setTooltip("新建主页").onClick(() => new NewHomeModal(this.app, this.plugin).open());
     new ButtonComponent(actions).setButtonText(this.editing ? "完成" : "编辑主页").setCta().onClick(async () => {
       this.editing = !this.editing;
       await this.render();
@@ -368,6 +436,23 @@ class ThemeModal extends Modal {
     const actions = contentEl.createDiv({ cls: "modal-button-container" });
     new ButtonComponent(actions).setButtonText("取消").onClick(() => this.close());
     new ButtonComponent(actions).setButtonText("保存").setCta().onClick(async () => { await this.plugin.saveConfig(); this.close(); });
+  }
+}
+
+class NewHomeModal extends Modal {
+  private name = "";
+  constructor(private appRef: App, private plugin: HomeBuilderPlugin) { super(appRef); }
+  onOpen() {
+    this.contentEl.addClass("hb-modal");
+    this.contentEl.createEl("h2", { text: "新建主页" });
+    this.contentEl.createEl("p", { text: "新主页从起步模板开始，之后可单独编辑布局、背景与模块。" });
+    new Setting(this.contentEl).setName("主页名称").addText((text) => text.setPlaceholder("例如：工作、学习、旅行").onChange((value) => this.name = value));
+    const actions = this.contentEl.createDiv({ cls: "modal-button-container" });
+    new ButtonComponent(actions).setButtonText("取消").onClick(() => this.close());
+    new ButtonComponent(actions).setButtonText("新建").setCta().onClick(async () => {
+      await this.plugin.createPage(this.name);
+      this.close();
+    });
   }
 }
 

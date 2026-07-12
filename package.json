@@ -1,6 +1,6 @@
 {
   "name": "obsidian-home-builder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A mobile-first visual home dashboard builder for Obsidian.",
   "main": "main.js",
   "scripts": {
