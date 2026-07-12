@@ -267,6 +267,50 @@ function defaultConfig(): HomeConfig {
   };
 }
 
+/** Upgrade the pre-0.3 multi-layout file without changing the user's modules. */
+function migrateConfig(raw?: Partial<HomeConfig> | null): HomeConfig {
+  const defaults = defaultConfig();
+  const source = raw ?? {};
+  const fixLayout = (layout?: Layout): Layout => ({
+    modules: (layout?.modules ?? []).map((module) => ({
+      ...module,
+      // Older releases accidentally stored Dataview paths as \"path\".
+      // Obsidian's mobile renderer treats the backslash as an invalid pattern.
+      markdown: module.markdown?.replace(/\\"/g, '"'),
+    })),
+  });
+  const fixPage = (page: SavedHomePage): SavedHomePage => ({
+    ...page,
+    id: page.id || newId(),
+    name: page.name || "未命名主页",
+    theme: { ...defaults.theme, ...page.theme },
+    banner: { ...defaults.banner, ...page.banner },
+    layouts: {
+      mobile: fixLayout(page.layouts?.mobile),
+      tablet: fixLayout(page.layouts?.tablet),
+      desktop: fixLayout(page.layouts?.desktop),
+    },
+  });
+  return {
+    ...defaults,
+    ...source,
+    version: 2,
+    pageId: source.pageId || defaults.pageId,
+    pageName: source.pageName || defaults.pageName,
+    pageOrder: source.pageOrder ?? [],
+    theme: { ...defaults.theme, ...source.theme },
+    banner: { ...defaults.banner, ...source.banner },
+    settings: { ...defaults.settings, ...source.settings },
+    savedPages: (source.savedPages ?? []).map(fixPage),
+    history: source.history ?? [],
+    layouts: {
+      mobile: fixLayout(source.layouts?.mobile),
+      tablet: fixLayout(source.layouts?.tablet),
+      desktop: fixLayout(source.layouts?.desktop),
+    },
+  };
+}
+
 export default class HomeBuilderPlugin extends Plugin {
   config: HomeConfig = defaultConfig();
   private refreshTimer: number | undefined;
@@ -484,13 +528,7 @@ export default class HomeBuilderPlugin extends Plugin {
     try {
       const restored = JSON.parse(entry.data) as HomeConfig;
       const currentHistory = this.config.history ?? [];
-      this.config = {
-        ...defaultConfig(), ...restored,
-        configPath: this.config.configPath,
-        banner: { ...defaultConfig().banner, ...restored.banner },
-        settings: { ...defaultConfig().settings, ...restored.settings },
-        history: currentHistory,
-      };
+      this.config = { ...migrateConfig(restored), configPath: this.config.configPath, history: currentHistory };
       await this.saveConfig(`恢复历史版本：${entry.at}`);
       new Notice("已恢复主页配置。 ");
     } catch (error) { new Notice(`无法恢复历史配置：${String(error)}`); }
@@ -500,14 +538,7 @@ export default class HomeBuilderPlugin extends Plugin {
     const path = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
     try {
       const fromVault = JSON.parse(await this.app.vault.adapter.read(path)) as HomeConfig;
-      const defaults = defaultConfig();
-      this.config = {
-        ...defaults, ...fromVault,
-        theme: { ...defaults.theme, ...fromVault.theme },
-        banner: { ...defaults.banner, ...fromVault.banner },
-        settings: { ...defaults.settings, ...fromVault.settings },
-        savedPages: fromVault.savedPages ?? [], history: fromVault.history ?? [],
-      };
+      this.config = migrateConfig(fromVault);
       this.lastSavedConfig = JSON.stringify(fromVault, null, 2);
       await this.refreshViews();
       new Notice("已重新读取库内主页配置。 ");
@@ -523,28 +554,13 @@ export default class HomeBuilderPlugin extends Plugin {
 
   async loadConfig() {
     const saved = await this.loadData() as Partial<HomeConfig> | null;
-    const defaults = defaultConfig();
-    this.config = {
-      ...defaults, ...saved,
-      theme: { ...defaults.theme, ...saved?.theme },
-      banner: { ...defaults.banner, ...saved?.banner },
-      settings: { ...defaults.settings, ...saved?.settings },
-      savedPages: saved?.savedPages ?? [],
-      history: saved?.history ?? [],
-    };
+    this.config = migrateConfig(saved);
     const path = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
     try {
       if (await this.app.vault.adapter.exists(path)) {
         const rawConfig = await this.app.vault.adapter.read(path);
         const fromVault = JSON.parse(rawConfig) as HomeConfig;
-        this.config = {
-          ...this.config, ...fromVault,
-          theme: { ...this.config.theme, ...fromVault.theme },
-          banner: { ...this.config.banner, ...fromVault.banner },
-          settings: { ...this.config.settings, ...fromVault.settings },
-          savedPages: fromVault.savedPages ?? [],
-          history: fromVault.history ?? [],
-        };
+        this.config = migrateConfig({ ...this.config, ...fromVault });
         this.lastSavedConfig = rawConfig;
       }
     } catch (error) {

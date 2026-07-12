@@ -194,6 +194,58 @@ function defaultConfig() {
     }
   };
 }
+function migrateConfig(raw) {
+  var _a, _b, _c, _d, _e, _f;
+  const defaults = defaultConfig();
+  const source = raw != null ? raw : {};
+  const fixLayout = (layout) => {
+    var _a2;
+    return {
+      modules: ((_a2 = layout == null ? void 0 : layout.modules) != null ? _a2 : []).map((module2) => {
+        var _a3;
+        return {
+          ...module2,
+          // Older releases accidentally stored Dataview paths as \"path\".
+          // Obsidian's mobile renderer treats the backslash as an invalid pattern.
+          markdown: (_a3 = module2.markdown) == null ? void 0 : _a3.replace(/\\"/g, '"')
+        };
+      })
+    };
+  };
+  const fixPage = (page) => {
+    var _a2, _b2, _c2;
+    return {
+      ...page,
+      id: page.id || newId(),
+      name: page.name || "\u672A\u547D\u540D\u4E3B\u9875",
+      theme: { ...defaults.theme, ...page.theme },
+      banner: { ...defaults.banner, ...page.banner },
+      layouts: {
+        mobile: fixLayout((_a2 = page.layouts) == null ? void 0 : _a2.mobile),
+        tablet: fixLayout((_b2 = page.layouts) == null ? void 0 : _b2.tablet),
+        desktop: fixLayout((_c2 = page.layouts) == null ? void 0 : _c2.desktop)
+      }
+    };
+  };
+  return {
+    ...defaults,
+    ...source,
+    version: 2,
+    pageId: source.pageId || defaults.pageId,
+    pageName: source.pageName || defaults.pageName,
+    pageOrder: (_a = source.pageOrder) != null ? _a : [],
+    theme: { ...defaults.theme, ...source.theme },
+    banner: { ...defaults.banner, ...source.banner },
+    settings: { ...defaults.settings, ...source.settings },
+    savedPages: ((_b = source.savedPages) != null ? _b : []).map(fixPage),
+    history: (_c = source.history) != null ? _c : [],
+    layouts: {
+      mobile: fixLayout((_d = source.layouts) == null ? void 0 : _d.mobile),
+      tablet: fixLayout((_e = source.layouts) == null ? void 0 : _e.tablet),
+      desktop: fixLayout((_f = source.layouts) == null ? void 0 : _f.desktop)
+    }
+  };
+}
 var HomeBuilderPlugin = class extends import_obsidian.Plugin {
   constructor() {
     super(...arguments);
@@ -398,14 +450,7 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     try {
       const restored = JSON.parse(entry.data);
       const currentHistory = (_b = this.config.history) != null ? _b : [];
-      this.config = {
-        ...defaultConfig(),
-        ...restored,
-        configPath: this.config.configPath,
-        banner: { ...defaultConfig().banner, ...restored.banner },
-        settings: { ...defaultConfig().settings, ...restored.settings },
-        history: currentHistory
-      };
+      this.config = { ...migrateConfig(restored), configPath: this.config.configPath, history: currentHistory };
       await this.saveConfig(`\u6062\u590D\u5386\u53F2\u7248\u672C\uFF1A${entry.at}`);
       new import_obsidian.Notice("\u5DF2\u6062\u590D\u4E3B\u9875\u914D\u7F6E\u3002 ");
     } catch (error) {
@@ -413,20 +458,10 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     }
   }
   async reloadConfigFromVault() {
-    var _a, _b;
     const path = (0, import_obsidian.normalizePath)(this.config.configPath || DEFAULT_CONFIG_PATH);
     try {
       const fromVault = JSON.parse(await this.app.vault.adapter.read(path));
-      const defaults = defaultConfig();
-      this.config = {
-        ...defaults,
-        ...fromVault,
-        theme: { ...defaults.theme, ...fromVault.theme },
-        banner: { ...defaults.banner, ...fromVault.banner },
-        settings: { ...defaults.settings, ...fromVault.settings },
-        savedPages: (_a = fromVault.savedPages) != null ? _a : [],
-        history: (_b = fromVault.history) != null ? _b : []
-      };
+      this.config = migrateConfig(fromVault);
       this.lastSavedConfig = JSON.stringify(fromVault, null, 2);
       await this.refreshViews();
       new import_obsidian.Notice("\u5DF2\u91CD\u65B0\u8BFB\u53D6\u5E93\u5185\u4E3B\u9875\u914D\u7F6E\u3002 ");
@@ -441,32 +476,14 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     new import_obsidian.Notice("\u5DF2\u5C06\u5F53\u524D\u5E03\u5C40\u540C\u6B65\u5230\u624B\u673A\u3001Pad \u548C\u7535\u8111\u3002");
   }
   async loadConfig() {
-    var _a, _b, _c, _d;
     const saved = await this.loadData();
-    const defaults = defaultConfig();
-    this.config = {
-      ...defaults,
-      ...saved,
-      theme: { ...defaults.theme, ...saved == null ? void 0 : saved.theme },
-      banner: { ...defaults.banner, ...saved == null ? void 0 : saved.banner },
-      settings: { ...defaults.settings, ...saved == null ? void 0 : saved.settings },
-      savedPages: (_a = saved == null ? void 0 : saved.savedPages) != null ? _a : [],
-      history: (_b = saved == null ? void 0 : saved.history) != null ? _b : []
-    };
+    this.config = migrateConfig(saved);
     const path = (0, import_obsidian.normalizePath)(this.config.configPath || DEFAULT_CONFIG_PATH);
     try {
       if (await this.app.vault.adapter.exists(path)) {
         const rawConfig = await this.app.vault.adapter.read(path);
         const fromVault = JSON.parse(rawConfig);
-        this.config = {
-          ...this.config,
-          ...fromVault,
-          theme: { ...this.config.theme, ...fromVault.theme },
-          banner: { ...this.config.banner, ...fromVault.banner },
-          settings: { ...this.config.settings, ...fromVault.settings },
-          savedPages: (_c = fromVault.savedPages) != null ? _c : [],
-          history: (_d = fromVault.history) != null ? _d : []
-        };
+        this.config = migrateConfig({ ...this.config, ...fromVault });
         this.lastSavedConfig = rawConfig;
       }
     } catch (error) {
