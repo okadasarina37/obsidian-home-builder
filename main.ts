@@ -7,8 +7,10 @@ import {
   Notice,
   Plugin,
   PluginSettingTab,
+  requestUrl,
   Setting,
   TFile,
+  TFolder,
   WorkspaceLeaf,
   normalizePath,
 } from "obsidian";
@@ -18,7 +20,8 @@ const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
-type ModuleKind = "shortcuts" | "markdown" | "text";
+type ModuleKind = "shortcuts" | "markdown" | "text" | "calendar" | "countdown" | "image" | "bookshelf" | "assets" | "aiusage" | "weather";
+type Span = 1 | 2 | 3 | 4;
 
 interface Shortcut {
   label: string;
@@ -30,12 +33,46 @@ interface HomeModule {
   id: string;
   kind: ModuleKind;
   title: string;
-  span?: 1 | 2;
+  span?: Span;
+  hiddenOn?: Device[];
   shortcuts?: Shortcut[];
   markdown?: string;
   text?: string;
   queryKind?: "raw" | "tasks" | "dataview";
-  query?: { path?: string; tag?: string; limit?: number };
+  query?: {
+    path?: string;
+    tag?: string;
+    limit?: number;
+    due?: "any" | "today" | "overdue" | "today-or-overdue" | "future";
+    priority?: "any" | "highest" | "high" | "medium" | "low" | "lowest";
+    sort?: "none" | "due" | "priority" | "created" | "path";
+    recurring?: "any" | "only" | "exclude";
+    showCompleted?: boolean;
+    dataviewView?: "table" | "list" | "task";
+    preset?: string;
+    sourceFile?: string;
+    sourceBlock?: number;
+  };
+  options?: {
+    imagePath?: string;
+    imageAlt?: string;
+    imageFit?: "cover" | "contain";
+    targetDate?: string;
+    label?: string;
+    dailyFolder?: string;
+    shelfPath?: string;
+    assetPath?: string;
+    usagePath?: string;
+    weatherLocation?: string;
+    weatherText?: string;
+    weatherTemperature?: string;
+    weatherMode?: "manual" | "auto";
+    weatherCity?: string;
+    weatherLatitude?: number;
+    weatherLongitude?: number;
+    weatherUpdatedAt?: string;
+    weatherError?: string;
+  };
 }
 
 interface Layout {
@@ -43,11 +80,12 @@ interface Layout {
 }
 
 interface HomeConfig {
-  version: 1;
+  version: 2;
   layoutMode: LayoutMode;
   configPath: string;
   pageId: string;
   pageName: string;
+  pageOrder: string[];
   savedPages: SavedHomePage[];
   theme: {
     backgroundType: "none" | "color" | "image" | "gradient";
@@ -55,6 +93,22 @@ interface HomeConfig {
     accent: string;
     cardOpacity: number;
   };
+  banner: {
+    enabled: boolean;
+    imagePath: string;
+    title: string;
+    subtitle: string;
+    alt: string;
+    height: number;
+    overlay: number;
+    rounded: boolean;
+  };
+  settings: {
+    openOnStartup: boolean;
+    startupPageId: string;
+    gridColumns: 2 | 3 | 4;
+  };
+  history?: Array<{ at: string; reason: string; data: string }>;
   layouts: Record<Device, Layout>;
 }
 
@@ -63,16 +117,49 @@ interface SavedHomePage {
   name: string;
   layoutMode: LayoutMode;
   theme: HomeConfig["theme"];
+  banner: HomeConfig["banner"];
   layouts: Record<Device, Layout>;
 }
 
 const newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
+const isExternalUrl = (value: string) => /^(https?:)?\/\//i.test(value);
+
+function vaultImageUrl(app: App, path: string): string {
+  if (!path || isExternalUrl(path)) return path;
+  const file = app.vault.getAbstractFileByPath(path);
+  return file instanceof TFile ? app.vault.getResourcePath(file) : path;
+}
+
+function taskPriorityLine(priority?: HomeModule["query"] extends infer _ ? string : never): string | undefined {
+  const map: Record<string, string> = {
+    highest: "priority is highest",
+    high: "priority is high",
+    medium: "priority is medium",
+    low: "priority is low",
+    lowest: "priority is lowest",
+  };
+  return priority ? map[priority] : undefined;
+}
 
 function taskMarkdown(query: HomeModule["query"]): string {
-  const lines = ["not done"];
+  const lines = [query?.showCompleted ? "" : "not done"].filter(Boolean);
   if (query?.path) lines.push(`path includes ${query.path}`);
   if (query?.tag) lines.push(`tags include ${query.tag.startsWith("#") ? query.tag : `#${query.tag}`}`);
+  const due: Record<string, string> = {
+    today: "due on today",
+    overdue: "due before today",
+    "today-or-overdue": "due on or before today",
+    future: "due after today",
+  };
+  if (query?.due && due[query.due]) lines.push(due[query.due]);
+  const priority = taskPriorityLine(query?.priority);
+  if (priority) lines.push(priority);
+  if (query?.recurring === "only") lines.push("is recurring");
+  if (query?.recurring === "exclude") lines.push("is not recurring");
+  const sort: Record<string, string> = { due: "sort by due", priority: "sort by priority", created: "sort by created", path: "sort by path" };
+  if (query?.sort && sort[query.sort]) lines.push(sort[query.sort]);
   if (query?.limit) lines.push(`limit ${query.limit}`);
   return `\`\`\`tasks\n${lines.join("\n")}\n\`\`\``;
 }
@@ -80,7 +167,31 @@ function taskMarkdown(query: HomeModule["query"]): string {
 function dataviewMarkdown(query: HomeModule["query"]): string {
   const source = query?.path ? `FROM \"${query.path}\"` : "FROM \"\"";
   const limit = query?.limit ? `\nLIMIT ${query.limit}` : "";
-  return `\`\`\`dataview\nTABLE WITHOUT ID file.link AS 笔记\n${source}\n${limit.trim()}\n\`\`\``;
+  const view = query?.dataviewView ?? "table";
+  const body = view === "list" ? "LIST file.link" : view === "task" ? "TASK" : "TABLE WITHOUT ID file.link AS 笔记";
+  return `\`\`\`dataview\n${body}\n${source}${limit}\n\`\`\``;
+}
+
+function presetMarkdown(preset: string): string {
+  const presets: Record<string, string> = {
+    reading: "```dataview\nTABLE WITHOUT ID file.link AS 书籍, reading-progress AS 进度\nFROM \"05_Books/epub-bookmarks\"\nWHERE reading-progress\nSORT reading-progress DESC\nLIMIT 6\n```",
+    assets: "```dataview\nTABLE WITHOUT ID file.link AS 资产, expire AS 到期日, status AS 状态\nFROM \"09_数字资产/资产\"\nSORT expire ASC\nLIMIT 8\n```",
+    life: "```dataview\nLIST FROM \"03_生活记录\"\nSORT file.mtime DESC\nLIMIT 8\n```",
+    aiusage: "```dataview\nTABLE WITHOUT ID balance AS 余额, totalUsed AS 累计消耗, updated AS 同步时间\nFROM \"03_生活记录/05_AI用量\"\nLIMIT 1\n```",
+    calendar: "```dataview\nLIST FROM \"02_日历/每日\"\nSORT file.name DESC\nLIMIT 7\n```",
+  };
+  return presets[preset] ?? "";
+}
+
+function weatherDescription(code: number): string {
+  const labels: Record<number, string> = {
+    0: "晴", 1: "大部晴朗", 2: "局部多云", 3: "阴", 45: "雾", 48: "雾凇",
+    51: "毛毛雨", 53: "毛毛雨", 55: "毛毛雨", 56: "冻毛毛雨", 57: "冻毛毛雨",
+    61: "小雨", 63: "中雨", 65: "大雨", 66: "冻雨", 67: "冻雨",
+    71: "小雪", 73: "中雪", 75: "大雪", 77: "雪粒", 80: "阵雨", 81: "阵雨", 82: "强阵雨",
+    85: "阵雪", 86: "强阵雪", 95: "雷暴", 96: "雷暴伴冰雹", 99: "强雷暴伴冰雹",
+  };
+  return labels[code] ?? "天气数据暂不可用";
 }
 
 function starterModules(): HomeModule[] {
@@ -123,13 +234,17 @@ function focusModules(): HomeModule[] {
 
 function defaultConfig(): HomeConfig {
   return {
-    version: 1,
+    version: 2,
     layoutMode: "independent",
     configPath: DEFAULT_CONFIG_PATH,
     pageId: newId(),
     pageName: "主页",
+    pageOrder: [],
     savedPages: [],
     theme: { backgroundType: "none", backgroundValue: "", accent: "#7c3aed", cardOpacity: 0.88 },
+    banner: { enabled: false, imagePath: "", title: "", subtitle: "", alt: "主页横幅图片", height: 220, overlay: .42, rounded: true },
+    settings: { openOnStartup: false, startupPageId: "", gridColumns: 2 },
+    history: [],
     layouts: {
       mobile: { modules: starterModules() },
       tablet: { modules: starterModules() },
@@ -140,6 +255,8 @@ function defaultConfig(): HomeConfig {
 
 export default class HomeBuilderPlugin extends Plugin {
   config: HomeConfig = defaultConfig();
+  private refreshTimer: number | undefined;
+  private lastSavedConfig = "";
 
   async onload() {
     await this.loadConfig();
@@ -148,6 +265,13 @@ export default class HomeBuilderPlugin extends Plugin {
     this.addCommand({ id: "open-home", name: "Open Home Builder", callback: () => void this.openHome() });
     this.addCommand({ id: "new-home", name: "Create a new Home Builder page", callback: () => new NewHomeModal(this.app, this).open() });
     this.addSettingTab(new HomeBuilderSettings(this.app, this));
+    this.registerEvent(this.app.vault.on("modify", (file) => this.scheduleRefresh(file)));
+    this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
+    this.registerEvent(this.app.vault.on("delete", () => this.scheduleRefresh()));
+    this.registerEvent(this.app.vault.on("rename", () => this.scheduleRefresh()));
+    this.app.workspace.onLayoutReady(() => {
+      if (this.config.settings.openOnStartup) void this.openConfiguredStartupPage();
+    });
   }
 
   onunload() {
@@ -159,6 +283,66 @@ export default class HomeBuilderPlugin extends Plugin {
       ?? this.app.workspace.getLeaf("tab");
     await leaf.setViewState({ type: VIEW_TYPE_HOME_BUILDER, active: true });
     this.app.workspace.revealLeaf(leaf);
+  }
+
+  async openConfiguredStartupPage() {
+    const id = this.config.settings.startupPageId;
+    if (id && id !== this.config.pageId && this.config.savedPages.some((page) => page.id === id)) await this.switchPage(id);
+    await this.openHome();
+  }
+
+  async refreshWeather(module: HomeModule, force = false) {
+    if (module.kind !== "weather") return;
+    module.options ??= {};
+    const options = module.options;
+    if (options.weatherMode !== "auto") return;
+    const last = options.weatherUpdatedAt ? new Date(options.weatherUpdatedAt).getTime() : 0;
+    if (!force && last && Date.now() - last < 30 * 60 * 1000 && options.weatherTemperature) return;
+    try {
+      let latitude = options.weatherLatitude;
+      let longitude = options.weatherLongitude;
+      let location = options.weatherLocation || options.weatherCity || "当前位置";
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        const city = options.weatherCity?.trim();
+        if (!city) throw new Error("请填写城市，或使用当前定位。");
+        const geocode = await requestUrl({ url: `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=zh&format=json` });
+        const result = geocode.json?.results?.[0];
+        if (!result) throw new Error("未找到该城市，请检查名称。");
+        latitude = result.latitude;
+        longitude = result.longitude;
+        location = [result.name, result.admin1, result.country].filter(Boolean).join(" · ");
+      }
+      const forecast = await requestUrl({ url: `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&timezone=auto` });
+      const current = forecast.json?.current;
+      if (!current || typeof current.temperature_2m !== "number") throw new Error("天气服务没有返回当前温度。");
+      options.weatherLatitude = latitude;
+      options.weatherLongitude = longitude;
+      options.weatherLocation = location;
+      options.weatherTemperature = `${Math.round(current.temperature_2m)}°C`;
+      options.weatherText = weatherDescription(Number(current.weather_code));
+      options.weatherUpdatedAt = new Date().toISOString();
+      options.weatherError = "";
+      await this.saveConfig("刷新天气");
+    } catch (error) {
+      options.weatherError = String(error).replace(/^Error:\s*/, "");
+      await this.saveConfig("天气刷新失败");
+      new Notice(`天气更新失败：${options.weatherError}`);
+    }
+  }
+
+  private scheduleRefresh(file?: { path: string }) {
+    if (this.refreshTimer) window.clearTimeout(this.refreshTimer);
+    this.refreshTimer = window.setTimeout(() => {
+      void this.refreshViews();
+      if (file?.path === normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH)) void this.detectExternalConfigChange();
+    }, 300);
+  }
+
+  private async detectExternalConfigChange() {
+    try {
+      const text = await this.app.vault.adapter.read(normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH));
+      if (text !== this.lastSavedConfig) new Notice("Home Builder 配置已被其他设备或同步服务修改。请在设置中选择重新读取或从历史恢复，避免覆盖。", 9000);
+    } catch { /* 配置尚未创建时无需提示 */ }
   }
 
   getDevice(): Device {
@@ -177,8 +361,14 @@ export default class HomeBuilderPlugin extends Plugin {
   }
 
   listPages(): Array<{ id: string; name: string }> {
-    return [{ id: this.config.pageId, name: this.config.pageName }, ...this.config.savedPages.map(({ id, name }) => ({ id, name }))];
+    const pages = [{ id: this.config.pageId, name: this.config.pageName }, ...this.config.savedPages.map(({ id, name }) => ({ id, name }))];
+    const map = new Map(pages.map((page) => [page.id, page]));
+    const ordered = (this.config.pageOrder ?? []).map((id) => map.get(id)).filter((page): page is { id: string; name: string } => Boolean(page));
+    for (const page of pages) if (!ordered.some((item) => item.id === page.id)) ordered.push(page);
+    return ordered;
   }
+
+  private normalizePageOrder() { this.config.pageOrder = this.listPages().map((page) => page.id); }
 
   private activeSnapshot(): SavedHomePage {
     return {
@@ -186,6 +376,7 @@ export default class HomeBuilderPlugin extends Plugin {
       name: this.config.pageName,
       layoutMode: this.config.layoutMode,
       theme: clone(this.config.theme),
+      banner: clone(this.config.banner),
       layouts: clone(this.config.layouts),
     };
   }
@@ -195,6 +386,7 @@ export default class HomeBuilderPlugin extends Plugin {
     this.config.pageName = page.name;
     this.config.layoutMode = page.layoutMode;
     this.config.theme = clone(page.theme);
+    this.config.banner = clone(page.banner ?? defaultConfig().banner);
     this.config.layouts = clone(page.layouts);
   }
 
@@ -207,7 +399,10 @@ export default class HomeBuilderPlugin extends Plugin {
     this.config.pageName = fresh.pageName;
     this.config.layoutMode = fresh.layoutMode;
     this.config.theme = fresh.theme;
+    this.config.banner = fresh.banner;
     this.config.layouts = fresh.layouts;
+    this.config.pageOrder = [...this.config.pageOrder.filter((id) => id !== fresh.pageId), fresh.pageId];
+    this.normalizePageOrder();
     await this.saveConfig();
     new Notice(`已新建主页：${cleanName}`);
   }
@@ -232,11 +427,72 @@ export default class HomeBuilderPlugin extends Plugin {
       new Notice("至少保留一张主页。");
       return;
     }
+    const deletedId = this.config.pageId;
     const next = this.config.savedPages[0];
     this.config.savedPages = this.config.savedPages.slice(1);
     this.applySnapshot(next);
+    this.config.pageOrder = this.config.pageOrder.filter((id) => id !== deletedId);
+    this.normalizePageOrder();
     await this.saveConfig();
     new Notice("主页已删除。");
+  }
+
+  async duplicateActivePage(name?: string) {
+    const original = this.activeSnapshot();
+    this.config.savedPages = [...this.config.savedPages.filter((page) => page.id !== original.id), original];
+    const copy = clone(original);
+    copy.id = newId();
+    copy.name = name?.trim() || `${original.name} 副本`;
+    this.applySnapshot(copy);
+    this.config.pageOrder = [...this.config.pageOrder, copy.id];
+    this.normalizePageOrder();
+    await this.saveConfig("复制主页");
+    new Notice(`已复制主页：${copy.name}`);
+  }
+
+  async movePage(id: string, delta: number) {
+    this.normalizePageOrder();
+    const from = this.config.pageOrder.indexOf(id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= this.config.pageOrder.length) return;
+    [this.config.pageOrder[from], this.config.pageOrder[to]] = [this.config.pageOrder[to], this.config.pageOrder[from]];
+    await this.saveConfig("调整主页顺序");
+  }
+
+  async restoreHistory(index: number) {
+    const entry = this.config.history?.[index];
+    if (!entry) return;
+    try {
+      const restored = JSON.parse(entry.data) as HomeConfig;
+      const currentHistory = this.config.history ?? [];
+      this.config = {
+        ...defaultConfig(), ...restored,
+        configPath: this.config.configPath,
+        banner: { ...defaultConfig().banner, ...restored.banner },
+        settings: { ...defaultConfig().settings, ...restored.settings },
+        history: currentHistory,
+      };
+      await this.saveConfig(`恢复历史版本：${entry.at}`);
+      new Notice("已恢复主页配置。 ");
+    } catch (error) { new Notice(`无法恢复历史配置：${String(error)}`); }
+  }
+
+  async reloadConfigFromVault() {
+    const path = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
+    try {
+      const fromVault = JSON.parse(await this.app.vault.adapter.read(path)) as HomeConfig;
+      const defaults = defaultConfig();
+      this.config = {
+        ...defaults, ...fromVault,
+        theme: { ...defaults.theme, ...fromVault.theme },
+        banner: { ...defaults.banner, ...fromVault.banner },
+        settings: { ...defaults.settings, ...fromVault.settings },
+        savedPages: fromVault.savedPages ?? [], history: fromVault.history ?? [],
+      };
+      this.lastSavedConfig = JSON.stringify(fromVault, null, 2);
+      await this.refreshViews();
+      new Notice("已重新读取库内主页配置。 ");
+    } catch (error) { new Notice(`无法读取库内配置：${String(error)}`); }
   }
 
   async syncLayoutFrom(device: Device) {
@@ -248,24 +504,48 @@ export default class HomeBuilderPlugin extends Plugin {
 
   async loadConfig() {
     const saved = await this.loadData() as Partial<HomeConfig> | null;
-    this.config = { ...defaultConfig(), ...saved, theme: { ...defaultConfig().theme, ...saved?.theme }, savedPages: saved?.savedPages ?? [] };
+    const defaults = defaultConfig();
+    this.config = {
+      ...defaults, ...saved,
+      theme: { ...defaults.theme, ...saved?.theme },
+      banner: { ...defaults.banner, ...saved?.banner },
+      settings: { ...defaults.settings, ...saved?.settings },
+      savedPages: saved?.savedPages ?? [],
+      history: saved?.history ?? [],
+    };
     const path = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
     try {
       if (await this.app.vault.adapter.exists(path)) {
-        const fromVault = JSON.parse(await this.app.vault.adapter.read(path)) as HomeConfig;
-        this.config = { ...this.config, ...fromVault, theme: { ...this.config.theme, ...fromVault.theme }, savedPages: fromVault.savedPages ?? [] };
+        const rawConfig = await this.app.vault.adapter.read(path);
+        const fromVault = JSON.parse(rawConfig) as HomeConfig;
+        this.config = {
+          ...this.config, ...fromVault,
+          theme: { ...this.config.theme, ...fromVault.theme },
+          banner: { ...this.config.banner, ...fromVault.banner },
+          settings: { ...this.config.settings, ...fromVault.settings },
+          savedPages: fromVault.savedPages ?? [],
+          history: fromVault.history ?? [],
+        };
+        this.lastSavedConfig = rawConfig;
       }
     } catch (error) {
       new Notice(`Home Builder: 无法读取主页配置：${String(error)}`);
     }
+    this.normalizePageOrder();
   }
 
-  async saveConfig() {
+  async saveConfig(reason = "编辑主页") {
     this.config.savedPages = this.config.savedPages.filter((page) => page.id !== this.config.pageId);
     const path = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
     const folder = path.split("/").slice(0, -1).join("/");
     if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
-    await this.app.vault.adapter.write(path, JSON.stringify(this.config, null, 2));
+    const snapshot = clone(this.config);
+    snapshot.history = [];
+    const historyEntry = { at: new Date().toISOString(), reason, data: JSON.stringify(snapshot) };
+    this.config.history = [...(this.config.history ?? []).slice(-9), historyEntry];
+    const serialized = JSON.stringify(this.config, null, 2);
+    await this.app.vault.adapter.write(path, serialized);
+    this.lastSavedConfig = serialized;
     await this.saveData({ configPath: path, layoutMode: this.config.layoutMode, theme: this.config.theme });
     await this.refreshViews();
   }
@@ -292,6 +572,7 @@ export default class HomeBuilderPlugin extends Plugin {
 class HomeBuilderView extends ItemView {
   private editing = false;
   private selectedDevice: Device | null = null;
+  private calendarOffsets = new Map<string, number>();
 
   constructor(leaf: WorkspaceLeaf, private plugin: HomeBuilderPlugin) {
     super(leaf);
@@ -312,10 +593,11 @@ class HomeBuilderView extends ItemView {
     const theme = this.plugin.config.theme;
     contentEl.style.setProperty("--hb-accent", theme.accent);
     contentEl.style.setProperty("--hb-card-opacity", String(theme.cardOpacity));
+    contentEl.style.setProperty("--hb-columns", String(this.plugin.config.settings.gridColumns));
     contentEl.removeClasses(["hb-bg-color", "hb-bg-image", "hb-bg-gradient"]);
     if (theme.backgroundType !== "none") {
       contentEl.addClass(`hb-bg-${theme.backgroundType}`);
-      if (theme.backgroundType === "image") contentEl.style.backgroundImage = `linear-gradient(rgb(var(--background-primary-rgb) / .78), rgb(var(--background-primary-rgb) / .9)), url("${theme.backgroundValue}")`;
+      if (theme.backgroundType === "image") contentEl.style.backgroundImage = `linear-gradient(rgb(var(--background-primary-rgb) / .78), rgb(var(--background-primary-rgb) / .9)), url("${vaultImageUrl(this.app, theme.backgroundValue)}")`;
       else contentEl.style.background = theme.backgroundValue;
     }
 
@@ -335,6 +617,7 @@ class HomeBuilderView extends ItemView {
       await this.render();
     });
     if (this.editing) this.renderEditorBar(contentEl);
+    this.renderBanner(contentEl);
 
     const grid = contentEl.createDiv({ cls: "hb-grid" });
     const layout = this.plugin.resolvedLayout(this.device());
@@ -342,7 +625,25 @@ class HomeBuilderView extends ItemView {
       const empty = grid.createDiv({ cls: "hb-empty" });
       empty.createEl("p", { text: "还没有模块。添加一个快捷入口或查询模块开始吧。" });
     }
-    for (const module of layout.modules) await this.renderModule(grid, module, layout);
+    for (const module of layout.modules) {
+      if (this.editing || !module.hiddenOn?.includes(this.device())) await this.renderModule(grid, module, layout);
+    }
+  }
+
+  private renderBanner(container: HTMLElement) {
+    const banner = this.plugin.config.banner;
+    if (!banner.enabled) return;
+    const el = container.createDiv({ cls: `hb-banner${banner.rounded ? " hb-banner-rounded" : ""}` });
+    el.style.setProperty("--hb-banner-height", `${Math.max(120, banner.height)}px`);
+    el.style.setProperty("--hb-banner-overlay", String(Math.max(0, Math.min(.9, banner.overlay))));
+    if (banner.imagePath) {
+      const image = el.createEl("img", { attr: { src: vaultImageUrl(this.app, banner.imagePath), alt: banner.alt || "主页横幅图片", loading: "eager" } });
+      image.addClass("hb-banner-image");
+    }
+    el.createDiv({ cls: "hb-banner-overlay" });
+    const text = el.createDiv({ cls: "hb-banner-text" });
+    text.createEl("h2", { text: banner.title || this.plugin.config.pageName });
+    if (banner.subtitle) text.createEl("p", { text: banner.subtitle });
   }
 
   private renderEditorBar(container: HTMLElement) {
@@ -356,7 +657,9 @@ class HomeBuilderView extends ItemView {
     add.onClick(() => this.openAddMenu(add.buttonEl));
     new ButtonComponent(bar).setButtonText("同步布局").setTooltip("将当前编辑设备的布局复制给其他设备").onClick(() => new ConfirmModal(this.app, "同步当前布局？", "会用当前设备的模块和排序覆盖其他设备布局。", () => this.plugin.syncLayoutFrom(this.device())).open());
     new ButtonComponent(bar).setButtonText("主题").onClick(() => new ThemeModal(this.app, this.plugin).open());
+    new ButtonComponent(bar).setButtonText("横幅").onClick(() => new BannerModal(this.app, this.plugin).open());
     new ButtonComponent(bar).setButtonText("模板").onClick(() => new TemplateModal(this.app, this.plugin).open());
+    new ButtonComponent(bar).setButtonText("导入导出").onClick(() => new LayoutTransferModal(this.app, this.plugin, this.device()).open());
   }
 
   private openAddMenu(anchor: HTMLElement) {
@@ -368,6 +671,13 @@ class HomeBuilderView extends ItemView {
       ["Dataview 表格", "markdown", "可视化生成文件夹表格", "dataview"],
       ["自定义查询", "markdown", "粘贴 Tasks、Dataview 或 DataviewJS", "raw"],
       ["文字模块", "text", "标题、说明或提醒"],
+      ["月历", "calendar", "链接到每日笔记"],
+      ["倒数日", "countdown", "显示距离某个日期的天数"],
+      ["图片", "image", "展示库内图片或 URL"],
+      ["阅读书架", "bookshelf", "读取正式书籍记录"],
+      ["数字资产", "assets", "显示近期资产与到期日"],
+      ["AI 用量", "aiusage", "显示已同步的 AI 用量记录"],
+      ["天气", "weather", "手动记录当前位置天气，不联网"],
     ];
     for (const [label, kind, description, queryKind] of choices) {
       const option = menu.createEl("button", { text: label });
@@ -380,6 +690,13 @@ class HomeBuilderView extends ItemView {
         else if (queryKind === "dataview") { created.query = { limit: 8 }; created.markdown = dataviewMarkdown(created.query); }
         else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
         if (kind === "text") created.text = "写一点提示或说明。";
+        if (kind === "calendar") created.options = { dailyFolder: "02_日历/每日" };
+        if (kind === "countdown") created.options = { label: "倒数日", targetDate: new Date().toISOString().slice(0, 10) };
+        if (kind === "image") created.options = { imagePath: "", imageAlt: "主页图片", imageFit: "cover" };
+        if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
+        if (kind === "assets") created.options = { assetPath: "09_数字资产/资产" };
+        if (kind === "aiusage") created.options = { usagePath: "03_生活记录/05_AI用量" };
+        if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "当前位置", weatherText: "晴", weatherTemperature: "--°" };
         this.plugin.resolvedLayout(this.device()).modules.push(created);
         await this.plugin.saveConfig();
         this.openModuleEditor(created);
@@ -393,7 +710,8 @@ class HomeBuilderView extends ItemView {
   }
 
   private async renderModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
-    const card = grid.createDiv({ cls: `hb-module hb-span-${module.span ?? 1}` });
+    const hidden = module.hiddenOn?.includes(this.device());
+    const card = grid.createDiv({ cls: `hb-module hb-span-${module.span ?? 1}${hidden ? " hb-device-hidden" : ""}` });
     if (this.editing && this.device() !== "mobile") {
       card.draggable = true;
       card.addClass("hb-draggable");
@@ -424,20 +742,62 @@ class HomeBuilderView extends ItemView {
       });
       new ButtonComponent(controls).setIcon("arrow-up").setTooltip("上移").setDisabled(layout.modules.indexOf(module) === 0).onClick(async () => { this.move(layout, module, -1); });
       new ButtonComponent(controls).setIcon("arrow-down").setTooltip("下移").setDisabled(layout.modules.indexOf(module) === layout.modules.length - 1).onClick(async () => { this.move(layout, module, 1); });
-      new ButtonComponent(controls).setIcon("columns-2").setTooltip("切换宽度").onClick(async () => { module.span = module.span === 2 ? 1 : 2; await this.plugin.saveConfig(); });
+      new ButtonComponent(controls).setIcon("columns-2").setTooltip("切换宽度").onClick(async () => {
+        const max = this.device() === "mobile" ? 1 : this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
+        module.span = ((module.span ?? 1) % max + 1) as Span;
+        await this.plugin.saveConfig("调整模块宽度");
+      });
+      new ButtonComponent(controls).setIcon(hidden ? "eye" : "eye-off").setTooltip(hidden ? "在此设备显示" : "在此设备隐藏").onClick(async () => {
+        const device = this.device();
+        const set = new Set(module.hiddenOn ?? []);
+        if (set.has(device)) set.delete(device); else set.add(device);
+        module.hiddenOn = [...set];
+        await this.plugin.saveConfig("更新设备可见性");
+      });
       new ButtonComponent(controls).setIcon("trash-2").setTooltip("删除模块").onClick(() => new ConfirmModal(this.app, "删除这个模块？", "模块的数据和布局将被移除。", async () => { layout.modules.splice(layout.modules.indexOf(module), 1); await this.plugin.saveConfig(); }).open());
     }
     const body = card.createDiv({ cls: "hb-module-body" });
     if (module.kind === "shortcuts") {
       const shortcuts = body.createDiv({ cls: "hb-shortcuts" });
       for (const item of module.shortcuts ?? []) {
-        const link = shortcuts.createEl("button", { text: item.label, cls: "hb-shortcut" });
-        link.setAttribute("aria-label", `打开 ${item.label}`);
-        link.onclick = () => void this.openTarget(item.target);
+        const link = new ButtonComponent(shortcuts).setButtonText(item.label).setClass("hb-shortcut");
+        if (item.icon) link.setIcon(item.icon);
+        const button = link.buttonEl;
+        button.setAttribute("aria-label", `打开 ${item.label}`);
+        button.onclick = () => void this.openTarget(item.target);
       }
       if (!(module.shortcuts?.length)) body.createEl("p", { text: "点编辑模块添加链接。", cls: "hb-muted" });
     } else if (module.kind === "text") {
       body.createEl("p", { text: module.text ?? "", cls: "hb-text" });
+    } else if (module.kind === "calendar") {
+      this.renderCalendar(body, module);
+    } else if (module.kind === "countdown") {
+      this.renderCountdown(body, module);
+    } else if (module.kind === "image") {
+      const path = module.options?.imagePath ?? "";
+      if (path) body.createEl("img", { cls: `hb-content-image hb-image-${module.options?.imageFit ?? "cover"}`, attr: { src: vaultImageUrl(this.app, path), alt: module.options?.imageAlt || module.title, loading: "lazy" } });
+      else body.createEl("p", { text: "点编辑模块选择图片。", cls: "hb-muted" });
+    } else if (module.kind === "weather") {
+      const weather = body.createDiv({ cls: "hb-weather" });
+      weather.createEl("strong", { text: module.options?.weatherTemperature || "--°" });
+      const description = weather.createDiv();
+      description.createEl("span", { text: module.options?.weatherText || "未填写天气" });
+      description.createEl("small", { text: module.options?.weatherLocation || "当前位置" });
+      if (module.options?.weatherUpdatedAt) description.createEl("small", { text: `更新于 ${new Date(module.options.weatherUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` });
+      if (module.options?.weatherError) description.createEl("small", { text: module.options.weatherError, cls: "hb-weather-error" });
+      if (module.options?.weatherMode === "auto") {
+        const refresh = new ButtonComponent(weather).setIcon("refresh-cw").setTooltip("刷新天气");
+        refresh.buttonEl.setAttribute("aria-label", "刷新天气");
+        refresh.onClick(() => void this.plugin.refreshWeather(module, true));
+        void this.plugin.refreshWeather(module);
+      }
+    } else if (module.kind === "bookshelf" || module.kind === "assets" || module.kind === "aiusage") {
+      const markdown = module.kind === "bookshelf"
+        ? `\`\`\`dataview\nTABLE WITHOUT ID file.link AS 书籍, reading-progress AS 进度\nFROM \"${module.options?.shelfPath || "05_Books/epub-bookmarks"}\"\nWHERE reading-progress\nSORT reading-progress DESC\nLIMIT 6\n\`\`\``
+        : module.kind === "assets"
+          ? `\`\`\`dataview\nTABLE WITHOUT ID file.link AS 资产, expire AS 到期日\nFROM \"${module.options?.assetPath || "09_数字资产/资产"}\"\nSORT expire ASC\nLIMIT 6\n\`\`\``
+          : `\`\`\`dataview\nTABLE WITHOUT ID balance AS 余额, totalUsed AS 累计消耗, updated AS 同步时间\nFROM \"${module.options?.usagePath || "03_生活记录/05_AI用量"}\"\nLIMIT 1\n\`\`\``;
+      await MarkdownRenderer.render(this.app, markdown, body, this.plugin.config.configPath, this);
     } else {
       try {
         await MarkdownRenderer.render(this.app, module.markdown ?? "", body, this.plugin.config.configPath, this);
@@ -447,10 +807,53 @@ class HomeBuilderView extends ItemView {
     }
   }
 
+  private renderCountdown(body: HTMLElement, module: HomeModule) {
+    const target = module.options?.targetDate;
+    const result = body.createDiv({ cls: "hb-countdown" });
+    if (!target || Number.isNaN(new Date(target).getTime())) {
+      result.setText("请在编辑模块中填写目标日期。");
+      return;
+    }
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const day = new Date(`${target}T00:00:00`);
+    const amount = Math.round((day.getTime() - today.getTime()) / 86400000);
+    result.createEl("strong", { text: amount >= 0 ? `${amount}` : `${Math.abs(amount)}` });
+    result.createEl("span", { text: amount >= 0 ? "天后" : "天前" });
+    result.createEl("small", { text: module.options?.label || target });
+  }
+
+  private renderCalendar(body: HTMLElement, module: HomeModule) {
+    const offset = this.calendarOffsets.get(module.id) ?? 0;
+    const shown = new Date(); shown.setDate(1); shown.setMonth(shown.getMonth() + offset);
+    const top = body.createDiv({ cls: "hb-calendar-head" });
+    const previous = new ButtonComponent(top).setIcon("chevron-left").setTooltip("上个月");
+    previous.onClick(async () => { this.calendarOffsets.set(module.id, offset - 1); await this.render(); });
+    top.createEl("strong", { text: `${shown.getFullYear()} 年 ${shown.getMonth() + 1} 月` });
+    const next = new ButtonComponent(top).setIcon("chevron-right").setTooltip("下个月");
+    next.onClick(async () => { this.calendarOffsets.set(module.id, offset + 1); await this.render(); });
+    const days = body.createDiv({ cls: "hb-calendar" });
+    for (const label of ["日", "一", "二", "三", "四", "五", "六"]) days.createEl("span", { text: label, cls: "hb-calendar-weekday" });
+    for (let empty = 0; empty < shown.getDay(); empty++) days.createEl("span", { cls: "hb-calendar-empty" });
+    const total = new Date(shown.getFullYear(), shown.getMonth() + 1, 0).getDate();
+    const today = new Date();
+    for (let day = 1; day <= total; day++) {
+      const date = new Date(shown.getFullYear(), shown.getMonth(), day);
+      const path = `${module.options?.dailyFolder || "02_日历/每日"}/${date.toISOString().slice(0, 10)}`;
+      const button = days.createEl("button", { text: String(day), cls: "hb-calendar-day" });
+      button.setAttribute("aria-label", `打开 ${path}`);
+      if (date.toDateString() === today.toDateString()) button.addClass("is-today");
+      button.onclick = () => void this.app.workspace.openLinkText(path, this.plugin.config.configPath, true);
+    }
+  }
+
   private async openTarget(target: string) {
+    if (isExternalUrl(target)) { window.open(target, "_blank", "noopener"); return; }
     const file = this.app.metadataCache.getFirstLinkpathDest(target, this.plugin.config.configPath);
     if (file instanceof TFile) await this.app.workspace.getLeaf("tab").openFile(file);
-    else new Notice(`找不到笔记：${target}`);
+    else {
+      await this.app.workspace.openLinkText(target, this.plugin.config.configPath, true);
+      new Notice(`未找到现有笔记，已尝试打开：${target}`);
+    }
   }
 
   private async move(layout: Layout, module: HomeModule, delta: number) {
@@ -482,10 +885,34 @@ class ModuleModal extends Modal {
             this.module.query!.path = value.trim();
             this.module.markdown = isTasks ? taskMarkdown(this.module.query) : dataviewMarkdown(this.module.query);
           }));
-        if (isTasks) new Setting(contentEl).setName("标签筛选").setDesc("可选，例如：#工作").addText((text) => text.setValue(this.module.query?.tag ?? "").onChange((value) => {
-          this.module.query!.tag = value.trim();
-          this.module.markdown = taskMarkdown(this.module.query);
-        }));
+        if (isTasks) {
+          new Setting(contentEl).setName("标签筛选").setDesc("可选，例如：#工作").addText((text) => text.setValue(this.module.query?.tag ?? "").onChange((value) => {
+            this.module.query!.tag = value.trim(); this.module.markdown = taskMarkdown(this.module.query);
+          }));
+          new Setting(contentEl).setName("完成状态").addDropdown((drop) => drop.addOption("false", "仅未完成").addOption("true", "包含已完成").setValue(String(this.module.query?.showCompleted ?? false)).onChange((value) => {
+            this.module.query!.showCompleted = value === "true"; this.module.markdown = taskMarkdown(this.module.query);
+          }));
+          new Setting(contentEl).setName("到期日").addDropdown((drop) => drop.addOption("any", "不限").addOption("today", "今天").addOption("overdue", "已逾期").addOption("today-or-overdue", "今天与逾期").addOption("future", "未来").setValue(this.module.query?.due ?? "any").onChange((value) => {
+            this.module.query!.due = value as NonNullable<HomeModule["query"]>["due"]; this.module.markdown = taskMarkdown(this.module.query);
+          }));
+          new Setting(contentEl).setName("优先级").addDropdown((drop) => drop.addOption("any", "不限").addOption("highest", "最高").addOption("high", "高").addOption("medium", "中").addOption("low", "低").addOption("lowest", "最低").setValue(this.module.query?.priority ?? "any").onChange((value) => {
+            this.module.query!.priority = value as NonNullable<HomeModule["query"]>["priority"]; this.module.markdown = taskMarkdown(this.module.query);
+          }));
+          new Setting(contentEl).setName("排序").addDropdown((drop) => drop.addOption("none", "默认").addOption("due", "到期日").addOption("priority", "优先级").addOption("created", "创建时间").addOption("path", "路径").setValue(this.module.query?.sort ?? "none").onChange((value) => {
+            this.module.query!.sort = value as NonNullable<HomeModule["query"]>["sort"]; this.module.markdown = taskMarkdown(this.module.query);
+          }));
+          new Setting(contentEl).setName("重复任务").addDropdown((drop) => drop.addOption("any", "不限").addOption("only", "仅重复任务").addOption("exclude", "排除重复任务").setValue(this.module.query?.recurring ?? "any").onChange((value) => {
+            this.module.query!.recurring = value as NonNullable<HomeModule["query"]>["recurring"]; this.module.markdown = taskMarkdown(this.module.query);
+          }));
+        } else {
+          new Setting(contentEl).setName("视图").addDropdown((drop) => drop.addOption("table", "表格").addOption("list", "列表").addOption("task", "任务").setValue(this.module.query?.dataviewView ?? "table").onChange((value) => {
+            this.module.query!.dataviewView = value as NonNullable<HomeModule["query"]>["dataviewView"]; this.module.markdown = dataviewMarkdown(this.module.query);
+          }));
+          new Setting(contentEl).setName("常用预设").setDesc("选中后可继续修改来源目录。").addDropdown((drop) => drop.addOption("", "不使用").addOption("reading", "阅读进度").addOption("assets", "数字资产").addOption("life", "生活记录").addOption("aiusage", "AI 用量").addOption("calendar", "最近日记").setValue(this.module.query?.preset ?? "").onChange((value) => {
+            this.module.query!.preset = value;
+            if (value) this.module.markdown = presetMarkdown(value);
+          }));
+        }
         new Setting(contentEl).setName("最多显示").addSlider((slider) => slider.setLimits(1, 30, 1).setValue(this.module.query?.limit ?? 8).setDynamicTooltip().onChange((value) => {
           this.module.query!.limit = value;
           this.module.markdown = isTasks ? taskMarkdown(this.module.query) : dataviewMarkdown(this.module.query);
@@ -496,13 +923,15 @@ class ModuleModal extends Modal {
         const area = contentEl.createEl("textarea", { cls: "hb-textarea" });
         area.value = this.module.markdown ?? "";
         area.oninput = () => this.module.markdown = area.value;
+        new Setting(contentEl).setName("引用现有查询区块").setDesc("扫描库内 Dataview、DataviewJS 和 Tasks 代码块；引用时复制代码，不会修改原笔记。")
+          .addButton((button) => button.setButtonText("选择查询区块").onClick(() => new QueryBlockPickerModal(this.appRef, (markdown) => { this.module.markdown = markdown; area.value = markdown; }).open()));
       }
     } else if (this.module.kind === "text") {
       new Setting(contentEl).setName("正文");
       const area = contentEl.createEl("textarea", { cls: "hb-textarea" });
       area.value = this.module.text ?? "";
       area.oninput = () => this.module.text = area.value;
-    } else {
+    } else if (this.module.kind === "shortcuts") {
       new Setting(contentEl).setName("快捷链接").setDesc("每行格式：显示名称 | 笔记路径或链接");
       const area = contentEl.createEl("textarea", { cls: "hb-textarea" });
       area.value = (this.module.shortcuts ?? []).map((item) => `${item.label} | ${item.target}`).join("\n");
@@ -510,6 +939,58 @@ class ModuleModal extends Modal {
         this.module.shortcuts = area.value.split("\n").map((line) => line.split("|").map((part) => part.trim()))
           .filter(([label, target]) => label && target).map(([label, target]) => ({ label, target }));
       };
+      new Setting(contentEl).setName("从库中添加").setDesc("选择笔记或文件夹后会追加到快捷入口。")
+        .addButton((button) => button.setButtonText("选择文件或文件夹").onClick(() => new VaultPickerModal(this.appRef, "选择快捷入口", "all", (path) => {
+          const label = path.split("/").pop()?.replace(/\.md$/i, "") || path;
+          this.module.shortcuts = [...(this.module.shortcuts ?? []), { label, target: path, icon: "file-text" }];
+          area.value = (this.module.shortcuts ?? []).map((item) => `${item.label} | ${item.target}`).join("\n");
+        }).open()));
+      new Setting(contentEl).setName("统一设置图标").setDesc("为当前快捷入口统一设置 Lucide 图标；后续可在 JSON 中逐项微调。")
+        .addDropdown((drop) => drop.addOption("file-text", "笔记").addOption("folder", "文件夹").addOption("external-link", "外链").addOption("calendar", "日历").addOption("book-open", "阅读").setValue(this.module.shortcuts?.[0]?.icon ?? "file-text").onChange((value) => {
+          this.module.shortcuts = (this.module.shortcuts ?? []).map((item) => ({ ...item, icon: value }));
+        }));
+    } else if (this.module.kind === "calendar") {
+      this.module.options ??= {};
+      new Setting(contentEl).setName("每日笔记目录").setDesc("点击日期时打开该目录下的 YYYY-MM-DD 笔记。")
+        .addText((text) => text.setValue(this.module.options?.dailyFolder ?? "02_日历/每日").onChange((value) => this.module.options!.dailyFolder = value.trim()));
+      new Setting(contentEl).setName("选择目录").addButton((button) => button.setButtonText("浏览库内文件夹").onClick(() => new VaultPickerModal(this.appRef, "选择每日笔记目录", "folder", (path) => this.module.options!.dailyFolder = path).open()));
+    } else if (this.module.kind === "countdown") {
+      this.module.options ??= {};
+      new Setting(contentEl).setName("说明").addText((text) => text.setValue(this.module.options?.label ?? "倒数日").onChange((value) => this.module.options!.label = value));
+      new Setting(contentEl).setName("目标日期").setDesc("格式 YYYY-MM-DD。").addText((text) => text.setPlaceholder("2026-12-31").setValue(this.module.options?.targetDate ?? "").onChange((value) => this.module.options!.targetDate = value.trim()));
+    } else if (this.module.kind === "image") {
+      this.module.options ??= {};
+      new Setting(contentEl).setName("图片路径或 URL").addText((text) => text.setValue(this.module.options?.imagePath ?? "").onChange((value) => this.module.options!.imagePath = value.trim()));
+      new Setting(contentEl).setName("选择库内图片").addButton((button) => button.setButtonText("选择图片").onClick(() => new VaultPickerModal(this.appRef, "选择图片", "image", (path) => this.module.options!.imagePath = path).open()));
+      new Setting(contentEl).setName("替代文字").addText((text) => text.setValue(this.module.options?.imageAlt ?? "").onChange((value) => this.module.options!.imageAlt = value));
+      new Setting(contentEl).setName("显示方式").addDropdown((drop) => drop.addOption("cover", "铺满裁切").addOption("contain", "完整显示").setValue(this.module.options?.imageFit ?? "cover").onChange((value) => this.module.options!.imageFit = value as "cover" | "contain"));
+    } else if (this.module.kind === "bookshelf" || this.module.kind === "assets" || this.module.kind === "aiusage") {
+      this.module.options ??= {};
+      const key = this.module.kind === "bookshelf" ? "shelfPath" : this.module.kind === "assets" ? "assetPath" : "usagePath";
+      const fallback = this.module.kind === "bookshelf" ? "05_Books/epub-bookmarks" : this.module.kind === "assets" ? "09_数字资产/资产" : "03_生活记录/05_AI用量";
+      new Setting(contentEl).setName("来源目录").setDesc("该模块仍由 Dataview 原生渲染。").addText((text) => text.setValue(this.module.options?.[key] ?? fallback).onChange((value) => (this.module.options as Record<string, string>)[key] = value.trim()));
+      new Setting(contentEl).setName("选择目录").addButton((button) => button.setButtonText("浏览库内文件夹").onClick(() => new VaultPickerModal(this.appRef, "选择来源目录", "folder", (path) => (this.module.options as Record<string, string>)[key] = path).open()));
+    } else if (this.module.kind === "weather") {
+      this.module.options ??= {};
+      new Setting(contentEl).setName("天气来源").setDesc("自动模式仅在启用后访问 Open-Meteo；不需要 API Key。")
+        .addDropdown((drop) => drop.addOption("manual", "手动填写（不联网）").addOption("auto", "自动抓取（Open-Meteo）")
+          .setValue(this.module.options?.weatherMode ?? "manual").onChange((value) => this.module.options!.weatherMode = value as "manual" | "auto"));
+      new Setting(contentEl).setName("城市").setDesc("自动模式填写城市名，例如：上海、Tokyo。定位优先于城市。")
+        .addText((text) => text.setValue(this.module.options?.weatherCity ?? "").onChange((value) => this.module.options!.weatherCity = value.trim()));
+      new Setting(contentEl).setName("使用当前定位").setDesc("会请求系统位置权限，仅保存经纬度到此主页配置中。")
+        .addButton((button) => button.setButtonText("授权定位").onClick(() => {
+          if (!navigator.geolocation) { new Notice("当前设备不支持定位。请填写城市。"); return; }
+          navigator.geolocation.getCurrentPosition((position) => {
+            this.module.options!.weatherLatitude = position.coords.latitude;
+            this.module.options!.weatherLongitude = position.coords.longitude;
+            this.module.options!.weatherLocation = "当前定位";
+            new Notice("已取得当前位置。保存后返回主页即可自动更新天气。");
+          }, () => new Notice("未取得位置权限。请填写城市后再试。"), { enableHighAccuracy: false, timeout: 10000, maximumAge: 30 * 60 * 1000 });
+        }));
+      new Setting(contentEl).setName("地点显示名").setDesc("手动模式可填写；自动模式会在首次更新后写入匹配地点。")
+        .addText((text) => text.setValue(this.module.options?.weatherLocation ?? "").onChange((value) => this.module.options!.weatherLocation = value));
+      new Setting(contentEl).setName("天气描述").setDesc("仅手动模式使用。").addText((text) => text.setValue(this.module.options?.weatherText ?? "").onChange((value) => this.module.options!.weatherText = value));
+      new Setting(contentEl).setName("温度").setDesc("仅手动模式使用。").addText((text) => text.setPlaceholder("25°").setValue(this.module.options?.weatherTemperature ?? "").onChange((value) => this.module.options!.weatherTemperature = value));
     }
     const actions = contentEl.createDiv({ cls: "modal-button-container" });
     new ButtonComponent(actions).setButtonText("取消").onClick(() => this.close());
@@ -527,15 +1008,95 @@ class ThemeModal extends Modal {
       .addOption("none", "跟随 Obsidian")
       .addOption("color", "纯色")
       .addOption("gradient", "渐变")
-      .addOption("image", "图片 URL")
+      .addOption("image", "图片（库内或 URL）")
       .setValue(this.plugin.config.theme.backgroundType)
       .onChange((value) => this.plugin.config.theme.backgroundType = value as HomeConfig["theme"]["backgroundType"]));
-    new Setting(contentEl).setName("背景值").setDesc("纯色填 #1e1e2e；渐变填 linear-gradient(...)；图片填 URL。").addText((text) => text.setValue(this.plugin.config.theme.backgroundValue).onChange((value) => this.plugin.config.theme.backgroundValue = value));
+    new Setting(contentEl).setName("背景值").setDesc("纯色填 #1e1e2e；渐变填 linear-gradient(...)；图片可填库内路径或 URL。").addText((text) => text.setValue(this.plugin.config.theme.backgroundValue).onChange((value) => this.plugin.config.theme.backgroundValue = value));
+    new Setting(contentEl).setName("选择库内背景图").addButton((button) => button.setButtonText("选择图片").onClick(() => new VaultPickerModal(this.appRef, "选择背景图", "image", (path) => this.plugin.config.theme.backgroundValue = path).open()));
     new Setting(contentEl).setName("强调色").addText((text) => text.setValue(this.plugin.config.theme.accent).onChange((value) => this.plugin.config.theme.accent = value));
     new Setting(contentEl).setName("卡片不透明度").addSlider((slider) => slider.setLimits(.45, 1, .05).setValue(this.plugin.config.theme.cardOpacity).setDynamicTooltip().onChange((value) => this.plugin.config.theme.cardOpacity = value));
     const actions = contentEl.createDiv({ cls: "modal-button-container" });
     new ButtonComponent(actions).setButtonText("取消").onClick(() => this.close());
     new ButtonComponent(actions).setButtonText("保存").setCta().onClick(async () => { await this.plugin.saveConfig(); this.close(); });
+  }
+}
+
+class BannerModal extends Modal {
+  constructor(private appRef: App, private plugin: HomeBuilderPlugin) { super(appRef); }
+  onOpen() {
+    const { contentEl } = this;
+    const banner = this.plugin.config.banner;
+    contentEl.addClass("hb-modal");
+    contentEl.createEl("h2", { text: "主页横幅" });
+    new Setting(contentEl).setName("启用横幅").setDesc("关闭后保留普通主页标题，不加载横幅图片。").addToggle((toggle) => toggle.setValue(banner.enabled).onChange((value) => banner.enabled = value));
+    new Setting(contentEl).setName("图片路径或 URL").addText((text) => text.setValue(banner.imagePath).onChange((value) => banner.imagePath = value.trim()));
+    new Setting(contentEl).setName("选择库内图片").addButton((button) => button.setButtonText("选择图片").onClick(() => new VaultPickerModal(this.appRef, "选择横幅图片", "image", (path) => banner.imagePath = path).open()));
+    new Setting(contentEl).setName("标题").setDesc("留空时使用主页名称。").addText((text) => text.setValue(banner.title).onChange((value) => banner.title = value));
+    new Setting(contentEl).setName("副标题").addText((text) => text.setValue(banner.subtitle).onChange((value) => banner.subtitle = value));
+    new Setting(contentEl).setName("图片替代文字").addText((text) => text.setValue(banner.alt).onChange((value) => banner.alt = value));
+    new Setting(contentEl).setName("横幅高度").addSlider((slider) => slider.setLimits(120, 420, 10).setValue(banner.height).setDynamicTooltip().onChange((value) => banner.height = value));
+    new Setting(contentEl).setName("文字遮罩").addSlider((slider) => slider.setLimits(0, .85, .05).setValue(banner.overlay).setDynamicTooltip().onChange((value) => banner.overlay = value));
+    new Setting(contentEl).setName("圆角").addToggle((toggle) => toggle.setValue(banner.rounded).onChange((value) => banner.rounded = value));
+    const actions = contentEl.createDiv({ cls: "modal-button-container" });
+    new ButtonComponent(actions).setButtonText("取消").onClick(() => this.close());
+    new ButtonComponent(actions).setButtonText("保存").setCta().onClick(async () => { await this.plugin.saveConfig("更新横幅"); this.close(); });
+  }
+}
+
+type PickerMode = "all" | "image" | "folder";
+class VaultPickerModal extends Modal {
+  private query = "";
+  constructor(private appRef: App, private titleText: string, private mode: PickerMode, private onPick: (path: string) => void) { super(appRef); }
+  onOpen() {
+    this.contentEl.addClass("hb-modal", "hb-picker-modal");
+    this.contentEl.createEl("h2", { text: this.titleText });
+    const input = this.contentEl.createEl("input", { type: "search", placeholder: "搜索路径…", cls: "hb-picker-search" });
+    const list = this.contentEl.createDiv({ cls: "hb-picker-list" });
+    const render = () => {
+      list.empty();
+      const lower = this.query.toLowerCase();
+      const entries = this.mode === "folder"
+        ? this.appRef.vault.getAllLoadedFiles().filter((item): item is TFolder => item instanceof TFolder)
+        : this.appRef.vault.getFiles().filter((file) => this.mode !== "image" || IMAGE_EXTENSIONS.has(file.extension.toLowerCase()));
+      const filtered = entries.filter((item) => item.path.toLowerCase().includes(lower)).slice(0, 100);
+      if (!filtered.length) list.createEl("p", { text: "没有匹配项。", cls: "hb-muted" });
+      for (const item of filtered) {
+        const button = list.createEl("button", { text: item.path, cls: "hb-picker-item" });
+        button.setAttribute("aria-label", `选择 ${item.path}`);
+        button.onclick = () => { this.onPick(item.path); this.close(); };
+      }
+    };
+    input.oninput = () => { this.query = input.value; render(); };
+    render();
+  }
+}
+
+class QueryBlockPickerModal extends Modal {
+  constructor(private appRef: App, private onPick: (markdown: string) => void) { super(appRef); }
+  async onOpen() {
+    this.contentEl.addClass("hb-modal", "hb-picker-modal");
+    this.contentEl.createEl("h2", { text: "引用已有查询区块" });
+    const list = this.contentEl.createDiv({ cls: "hb-picker-list" });
+    const matches: Array<{ path: string; markdown: string }> = [];
+    for (const file of this.appRef.vault.getMarkdownFiles()) {
+      const cached = this.appRef.metadataCache.getFileCache(file);
+      const content = await this.appRef.vault.cachedRead(file);
+      const contentLines = content.split("\n");
+      const blocks = cached?.sections?.filter((section) => section.type === "code" && /^```(?:tasks|dataview|dataviewjs)\s*$/i.test(contentLines[section.position.start.line]?.trim() ?? "")) ?? [];
+      if (!blocks.length) continue;
+      for (const block of blocks) {
+        const lines = contentLines.slice(block.position.start.line, block.position.end.line + 1);
+        const markdown = lines.join("\n");
+        if (markdown.trim()) matches.push({ path: file.path, markdown });
+      }
+    }
+    if (!matches.length) list.createEl("p", { text: "没有找到 Tasks、Dataview 或 DataviewJS 代码块。", cls: "hb-muted" });
+    for (const item of matches.slice(0, 100)) {
+      const button = list.createEl("button", { cls: "hb-picker-item" });
+      button.createEl("strong", { text: item.path });
+      button.createEl("small", { text: item.markdown.split("\n").slice(0, 2).join(" ") });
+      button.onclick = () => { this.onPick(item.markdown); this.close(); };
+    }
   }
 }
 
@@ -569,6 +1130,14 @@ class PageManagerModal extends Modal {
       this.close();
       new NewHomeModal(this.appRef, this.plugin).open();
     }));
+    new Setting(this.contentEl).setName("复制当前主页").setDesc("复制布局、模块、主题和横幅到新主页。").addButton((button) => button.setButtonText("复制").onClick(async () => {
+      await this.plugin.duplicateActivePage(); this.close();
+    }));
+    this.contentEl.createEl("h3", { text: "主页顺序" });
+    const pages = this.plugin.listPages();
+    pages.forEach((page, index) => {
+      new Setting(this.contentEl).setName(page.name).setDesc(page.id === this.plugin.config.pageId ? "当前主页" : "").addButton((button) => button.setIcon("arrow-up").setTooltip("上移").setDisabled(index === 0).onClick(async () => { await this.plugin.movePage(page.id, -1); this.close(); new PageManagerModal(this.appRef, this.plugin).open(); })).addButton((button) => button.setIcon("arrow-down").setTooltip("下移").setDisabled(index === pages.length - 1).onClick(async () => { await this.plugin.movePage(page.id, 1); this.close(); new PageManagerModal(this.appRef, this.plugin).open(); }));
+    });
     new Setting(this.contentEl).setName("删除当前主页").setDesc("至少会保留一张主页。").addButton((button) => button.setButtonText("删除").setWarning().onClick(() => new ConfirmModal(this.appRef, "删除当前主页？", "此主页的布局、模块和主题设置将被删除。", async () => {
       await this.plugin.deleteActivePage();
       this.close();
@@ -595,6 +1164,35 @@ class TemplateModal extends Modal {
   }
 }
 
+class LayoutTransferModal extends Modal {
+  constructor(private appRef: App, private plugin: HomeBuilderPlugin, private device: Device) { super(appRef); }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("hb-modal");
+    contentEl.createEl("h2", { text: "模块导入与导出" });
+    contentEl.createEl("p", { text: "导出内容可以保存到任意笔记或分享给其他 Home Builder 用户；导入会追加到当前设备布局。", cls: "setting-item-description" });
+    const exported = contentEl.createEl("textarea", { cls: "hb-textarea" });
+    exported.value = JSON.stringify(this.plugin.resolvedLayout(this.device).modules, null, 2);
+    new Setting(contentEl).setName("导出当前布局").addButton((button) => button.setButtonText("复制 JSON").onClick(async () => {
+      await navigator.clipboard?.writeText(exported.value);
+      new Notice("模块 JSON 已复制。 ");
+    }));
+    contentEl.createEl("h3", { text: "导入模块" });
+    const imported = contentEl.createEl("textarea", { cls: "hb-textarea", placeholder: "粘贴 Home Builder 模块 JSON…" });
+    new ButtonComponent(contentEl).setButtonText("导入并追加模块").setCta().onClick(async () => {
+      try {
+        const parsed = JSON.parse(imported.value) as HomeModule[] | Layout;
+        const modules = Array.isArray(parsed) ? parsed : parsed.modules;
+        if (!Array.isArray(modules)) throw new Error("JSON 中没有 modules 数组");
+        this.plugin.resolvedLayout(this.device).modules.push(...clone(modules).map((item) => ({ ...item, id: newId() })));
+        await this.plugin.saveConfig("导入模块");
+        new Notice(`已导入 ${modules.length} 个模块。`);
+        this.close();
+      } catch (error) { new Notice(`无法导入：${String(error)}`); }
+    });
+  }
+}
+
 class ConfirmModal extends Modal {
   constructor(private appRef: App, private titleText: string, private description: string, private confirm: () => void | Promise<void>) { super(appRef); }
   onOpen() {
@@ -616,6 +1214,32 @@ class HomeBuilderSettings extends PluginSettingTab {
       .addText((text) => text.setValue(this.plugin.config.configPath).onChange((value) => this.plugin.config.configPath = value.trim() || DEFAULT_CONFIG_PATH));
     new Setting(containerEl).setName("布局模式").setDesc("独立：三端分别编辑；共享：统一响应式；混合：可为设备保留覆写。")
       .addDropdown((drop) => drop.addOption("independent", "独立布局").addOption("shared", "共享响应式布局").addOption("hybrid", "混合布局").setValue(this.plugin.config.layoutMode).onChange((value) => this.plugin.config.layoutMode = value as LayoutMode));
-    new Setting(containerEl).addButton((button) => button.setButtonText("保存设置").setCta().onClick(async () => { await this.plugin.saveConfig(); new Notice("Home Builder 设置已保存。"); }));
+    new Setting(containerEl).setName("桌面网格列数").setDesc("手机始终单列，Pad 固定双列；电脑可选 2、3 或 4 列。")
+      .addDropdown((drop) => drop.addOption("2", "2 列").addOption("3", "3 列").addOption("4", "4 列").setValue(String(this.plugin.config.settings.gridColumns)).onChange((value) => this.plugin.config.settings.gridColumns = Number(value) as 2 | 3 | 4));
+    new Setting(containerEl).setName("启动时打开 Home Builder").setDesc("可选。开启后会在 Obsidian 布局就绪时打开指定主页；不会修改 Homepage 插件的配置。")
+      .addToggle((toggle) => toggle.setValue(this.plugin.config.settings.openOnStartup).onChange((value) => this.plugin.config.settings.openOnStartup = value));
+    new Setting(containerEl).setName("启动主页").setDesc("仅在开启启动主页后生效。").addDropdown((drop) => {
+      drop.addOption("", "当前主页");
+      for (const page of this.plugin.listPages()) drop.addOption(page.id, page.name);
+      return drop.setValue(this.plugin.config.settings.startupPageId).onChange((value) => this.plugin.config.settings.startupPageId = value);
+    });
+    new Setting(containerEl).setName("同步冲突处理").setDesc("当 S3 或其他设备改写库内 JSON 时，先重新读取或从历史恢复；不会静默覆盖。")
+      .addButton((button) => button.setButtonText("重新读取库内配置").onClick(() => void this.plugin.reloadConfigFromVault()))
+      .addButton((button) => button.setButtonText("查看历史版本").onClick(() => new HistoryModal(this.app, this.plugin).open()));
+    new Setting(containerEl).addButton((button) => button.setButtonText("保存设置").setCta().onClick(async () => { await this.plugin.saveConfig("更新设置"); new Notice("Home Builder 设置已保存。"); }));
+  }
+}
+
+class HistoryModal extends Modal {
+  constructor(private appRef: App, private plugin: HomeBuilderPlugin) { super(appRef); }
+  onOpen() {
+    this.contentEl.addClass("hb-modal");
+    this.contentEl.createEl("h2", { text: "主页配置历史" });
+    const entries = this.plugin.config.history ?? [];
+    if (!entries.length) this.contentEl.createEl("p", { text: "暂无历史版本。每次保存主页配置会保留最近 10 次快照。", cls: "hb-muted" });
+    [...entries].reverse().forEach((entry, reverseIndex) => {
+      const index = entries.length - 1 - reverseIndex;
+      new Setting(this.contentEl).setName(new Date(entry.at).toLocaleString()).setDesc(entry.reason).addButton((button) => button.setButtonText("恢复此版本").setWarning().onClick(() => new ConfirmModal(this.appRef, "恢复这个历史版本？", "会替换当前主页配置，并自动保留一份新的恢复前快照。", async () => { await this.plugin.restoreHistory(index); this.close(); }).open()));
+    });
   }
 }
