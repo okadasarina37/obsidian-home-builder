@@ -19,6 +19,8 @@
 .hb-editor-bar > span { color: var(--text-muted); font-size: .85em; margin-right: 4px; }
 .hb-grid { max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .hb-module { min-width: 0; border: 1px solid color-mix(in srgb, var(--background-modifier-border), transparent 12%); border-radius: 16px; padding: 16px; background: rgb(var(--background-primary-rgb) / var(--hb-card-opacity)); box-shadow: 0 8px 32px rgb(0 0 0 / .06); overflow: hidden; }
+.hb-draggable { cursor: grab; }
+.hb-draggable:active { cursor: grabbing; }
 .hb-span-2 { grid-column: span 2; }
 .hb-module-title { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .hb-module-title h2 { margin: 0; font-size: 1.05rem; line-height: 1.35; }

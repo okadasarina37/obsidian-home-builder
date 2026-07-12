@@ -5,7 +5,10 @@ A mobile-first, visual home dashboard builder for Obsidian. Build a responsive h
 ## MVP capabilities
 
 - Separate, shared, or hybrid layouts for phone, tablet, and desktop.
+- Multiple named home pages, each with its own modules, layouts, and appearance.
 - Visual shortcut, text, and Markdown-query modules.
+- Visual Tasks and Dataview query builders, plus raw Tasks/Dataview/DataviewJS editing.
+- Desktop/Pad drag reordering, touch-safe move controls, module duplication, layout sync, and three starter templates.
 - Native rendering for Tasks, Dataview, and DataviewJS blocks: the plugin renders their original Markdown, so existing queries and task checkboxes retain their normal behaviour.
 - Background image, solid color, gradient, accent color, and card opacity controls.
 - A vault-stored JSON configuration file (`Home Builder/home-builder.json` by default) for normal sync compatibility.

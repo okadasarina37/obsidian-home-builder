@@ -34,6 +34,8 @@ interface HomeModule {
   shortcuts?: Shortcut[];
   markdown?: string;
   text?: string;
+  queryKind?: "raw" | "tasks" | "dataview";
+  query?: { path?: string; tag?: string; limit?: number };
 }
 
 interface Layout {
@@ -67,6 +69,20 @@ interface SavedHomePage {
 const newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+function taskMarkdown(query: HomeModule["query"]): string {
+  const lines = ["not done"];
+  if (query?.path) lines.push(`path includes ${query.path}`);
+  if (query?.tag) lines.push(`tags include ${query.tag.startsWith("#") ? query.tag : `#${query.tag}`}`);
+  if (query?.limit) lines.push(`limit ${query.limit}`);
+  return `\`\`\`tasks\n${lines.join("\n")}\n\`\`\``;
+}
+
+function dataviewMarkdown(query: HomeModule["query"]): string {
+  const source = query?.path ? `FROM \"${query.path}\"` : "FROM \"\"";
+  const limit = query?.limit ? `\nLIMIT ${query.limit}` : "";
+  return `\`\`\`dataview\nTABLE WITHOUT ID file.link AS 笔记\n${source}\n${limit.trim()}\n\`\`\``;
+}
+
 function starterModules(): HomeModule[] {
   return [
     {
@@ -95,6 +111,13 @@ function starterModules(): HomeModule[] {
       span: 1,
       markdown: "```dataview\nTABLE WITHOUT ID file.link AS 书籍, reading-progress AS 进度\nFROM \\\"05_Books/epub-bookmarks\\\"\nWHERE reading-progress\nSORT reading-progress DESC\nLIMIT 5\n```",
     },
+  ];
+}
+
+function focusModules(): HomeModule[] {
+  return [
+    { id: newId(), kind: "markdown", title: "今日待办", span: 2, queryKind: "tasks", query: { limit: 10 }, markdown: taskMarkdown({ limit: 10 }) },
+    { id: newId(), kind: "shortcuts", title: "常用入口", span: 1, shortcuts: [] },
   ];
 }
 
@@ -199,6 +222,30 @@ export default class HomeBuilderPlugin extends Plugin {
     await this.saveConfig();
   }
 
+  async renamePage(name: string) {
+    this.config.pageName = name.trim() || "未命名主页";
+    await this.saveConfig();
+  }
+
+  async deleteActivePage() {
+    if (!this.config.savedPages.length) {
+      new Notice("至少保留一张主页。");
+      return;
+    }
+    const next = this.config.savedPages[0];
+    this.config.savedPages = this.config.savedPages.slice(1);
+    this.applySnapshot(next);
+    await this.saveConfig();
+    new Notice("主页已删除。");
+  }
+
+  async syncLayoutFrom(device: Device) {
+    const source = clone(this.resolvedLayout(device));
+    this.config.layouts = { mobile: clone(source), tablet: clone(source), desktop: clone(source) };
+    await this.saveConfig();
+    new Notice("已将当前布局同步到手机、Pad 和电脑。");
+  }
+
   async loadConfig() {
     const saved = await this.loadData() as Partial<HomeConfig> | null;
     this.config = { ...defaultConfig(), ...saved, theme: { ...defaultConfig().theme, ...saved?.theme }, savedPages: saved?.savedPages ?? [] };
@@ -230,10 +277,15 @@ export default class HomeBuilderPlugin extends Plugin {
     }
   }
 
-  async resetToStarter() {
-    this.config.layouts = defaultConfig().layouts;
+  async applyTemplate(template: "xiaoxin" | "focus" | "blank") {
+    const modules = template === "xiaoxin" ? starterModules() : template === "focus" ? focusModules() : [];
+    this.config.layouts = {
+      mobile: { modules: clone(modules) },
+      tablet: { modules: clone(modules) },
+      desktop: { modules: clone(modules) },
+    };
     await this.saveConfig();
-    new Notice("已导入小新知识库起步模板。");
+    new Notice(template === "xiaoxin" ? "已导入小新知识库模板。" : template === "focus" ? "已导入专注模板。" : "已应用空白主页。");
   }
 }
 
@@ -277,6 +329,7 @@ class HomeBuilderView extends ItemView {
     pageSelect.value = this.plugin.config.pageId;
     pageSelect.onchange = async () => { await this.plugin.switchPage(pageSelect.value); };
     new ButtonComponent(actions).setIcon("plus").setTooltip("新建主页").onClick(() => new NewHomeModal(this.app, this.plugin).open());
+    new ButtonComponent(actions).setIcon("settings-2").setTooltip("管理主页").onClick(() => new PageManagerModal(this.app, this.plugin).open());
     new ButtonComponent(actions).setButtonText(this.editing ? "完成" : "编辑主页").setCta().onClick(async () => {
       this.editing = !this.editing;
       await this.render();
@@ -301,26 +354,31 @@ class HomeBuilderView extends ItemView {
     }
     const add = new ButtonComponent(bar).setButtonText("添加模块");
     add.onClick(() => this.openAddMenu(add.buttonEl));
+    new ButtonComponent(bar).setButtonText("同步布局").setTooltip("将当前编辑设备的布局复制给其他设备").onClick(() => new ConfirmModal(this.app, "同步当前布局？", "会用当前设备的模块和排序覆盖其他设备布局。", () => this.plugin.syncLayoutFrom(this.device())).open());
     new ButtonComponent(bar).setButtonText("主题").onClick(() => new ThemeModal(this.app, this.plugin).open());
-    new ButtonComponent(bar).setButtonText("模板").onClick(() => new ConfirmModal(this.app, "导入小新知识库模板？", "这会替换当前三端主页布局。", () => void this.plugin.resetToStarter()).open());
+    new ButtonComponent(bar).setButtonText("模板").onClick(() => new TemplateModal(this.app, this.plugin).open());
   }
 
   private openAddMenu(anchor: HTMLElement) {
     const menu = document.createElement("div");
     menu.addClass("hb-add-menu");
-    const choices: Array<[string, ModuleKind, string]> = [
+    const choices: Array<[string, ModuleKind, string, HomeModule["queryKind"]?]> = [
       ["快捷入口", "shortcuts", "链接与常用笔记入口"],
-      ["查询模块", "markdown", "粘贴 Tasks、Dataview 或 DataviewJS"],
+      ["任务清单", "markdown", "可视化生成 Tasks 查询", "tasks"],
+      ["Dataview 表格", "markdown", "可视化生成文件夹表格", "dataview"],
+      ["自定义查询", "markdown", "粘贴 Tasks、Dataview 或 DataviewJS", "raw"],
       ["文字模块", "text", "标题、说明或提醒"],
     ];
-    for (const [label, kind, description] of choices) {
+    for (const [label, kind, description, queryKind] of choices) {
       const option = menu.createEl("button", { text: label });
       option.createEl("small", { text: description });
       option.onclick = async () => {
         menu.remove();
-        const created: HomeModule = { id: newId(), kind, title: label, span: 1 };
+        const created: HomeModule = { id: newId(), kind, title: label, span: 1, queryKind };
         if (kind === "shortcuts") created.shortcuts = [];
-        if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
+        if (queryKind === "tasks") { created.query = { limit: 8 }; created.markdown = taskMarkdown(created.query); }
+        else if (queryKind === "dataview") { created.query = { limit: 8 }; created.markdown = dataviewMarkdown(created.query); }
+        else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
         if (kind === "text") created.text = "写一点提示或说明。";
         this.plugin.resolvedLayout(this.device()).modules.push(created);
         await this.plugin.saveConfig();
@@ -336,11 +394,34 @@ class HomeBuilderView extends ItemView {
 
   private async renderModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
     const card = grid.createDiv({ cls: `hb-module hb-span-${module.span ?? 1}` });
+    if (this.editing && this.device() !== "mobile") {
+      card.draggable = true;
+      card.addClass("hb-draggable");
+      card.ondragstart = (event) => event.dataTransfer?.setData("text/plain", module.id);
+      card.ondragover = (event) => event.preventDefault();
+      card.ondrop = async (event) => {
+        event.preventDefault();
+        const movedId = event.dataTransfer?.getData("text/plain");
+        const from = layout.modules.findIndex((item) => item.id === movedId);
+        const to = layout.modules.indexOf(module);
+        if (from < 0 || from === to) return;
+        const [moved] = layout.modules.splice(from, 1);
+        layout.modules.splice(to, 0, moved);
+        await this.plugin.saveConfig();
+      };
+    }
     const titleRow = card.createDiv({ cls: "hb-module-title" });
     titleRow.createEl("h2", { text: module.title || "未命名模块" });
     if (this.editing) {
       const controls = titleRow.createDiv({ cls: "hb-module-controls" });
       new ButtonComponent(controls).setIcon("pencil").setTooltip("编辑模块").onClick(() => this.openModuleEditor(module));
+      new ButtonComponent(controls).setIcon("copy").setTooltip("复制模块").onClick(async () => {
+        const copy = clone(module);
+        copy.id = newId();
+        copy.title = `${module.title} 副本`;
+        layout.modules.splice(layout.modules.indexOf(module) + 1, 0, copy);
+        await this.plugin.saveConfig();
+      });
       new ButtonComponent(controls).setIcon("arrow-up").setTooltip("上移").setDisabled(layout.modules.indexOf(module) === 0).onClick(async () => { this.move(layout, module, -1); });
       new ButtonComponent(controls).setIcon("arrow-down").setTooltip("下移").setDisabled(layout.modules.indexOf(module) === layout.modules.length - 1).onClick(async () => { this.move(layout, module, 1); });
       new ButtonComponent(controls).setIcon("columns-2").setTooltip("切换宽度").onClick(async () => { module.span = module.span === 2 ? 1 : 2; await this.plugin.saveConfig(); });
@@ -393,10 +474,29 @@ class ModuleModal extends Modal {
     contentEl.createEl("h2", { text: "编辑模块" });
     new Setting(contentEl).setName("标题").addText((text) => text.setValue(this.module.title).onChange((value) => this.module.title = value));
     if (this.module.kind === "markdown") {
-      new Setting(contentEl).setName("查询或 Markdown").setDesc("可直接粘贴 Tasks、Dataview 或 DataviewJS 代码块。");
-      const area = contentEl.createEl("textarea", { cls: "hb-textarea" });
-      area.value = this.module.markdown ?? "";
-      area.oninput = () => this.module.markdown = area.value;
+      if (this.module.queryKind === "tasks" || this.module.queryKind === "dataview") {
+        const isTasks = this.module.queryKind === "tasks";
+        this.module.query ??= { limit: 8 };
+        new Setting(contentEl).setName(isTasks ? "任务来源目录" : "Dataview 来源目录").setDesc("留空则查询整个库。")
+          .addText((text) => text.setPlaceholder("例如：06_Todo").setValue(this.module.query?.path ?? "").onChange((value) => {
+            this.module.query!.path = value.trim();
+            this.module.markdown = isTasks ? taskMarkdown(this.module.query) : dataviewMarkdown(this.module.query);
+          }));
+        if (isTasks) new Setting(contentEl).setName("标签筛选").setDesc("可选，例如：#工作").addText((text) => text.setValue(this.module.query?.tag ?? "").onChange((value) => {
+          this.module.query!.tag = value.trim();
+          this.module.markdown = taskMarkdown(this.module.query);
+        }));
+        new Setting(contentEl).setName("最多显示").addSlider((slider) => slider.setLimits(1, 30, 1).setValue(this.module.query?.limit ?? 8).setDynamicTooltip().onChange((value) => {
+          this.module.query!.limit = value;
+          this.module.markdown = isTasks ? taskMarkdown(this.module.query) : dataviewMarkdown(this.module.query);
+        }));
+        contentEl.createEl("p", { text: "该模块仍由原生 Tasks/Dataview 插件渲染；点击保存后可立即预览。", cls: "setting-item-description" });
+      } else {
+        new Setting(contentEl).setName("查询或 Markdown").setDesc("可直接粘贴 Tasks、Dataview 或 DataviewJS 代码块。");
+        const area = contentEl.createEl("textarea", { cls: "hb-textarea" });
+        area.value = this.module.markdown ?? "";
+        area.oninput = () => this.module.markdown = area.value;
+      }
     } else if (this.module.kind === "text") {
       new Setting(contentEl).setName("正文");
       const area = contentEl.createEl("textarea", { cls: "hb-textarea" });
@@ -453,6 +553,45 @@ class NewHomeModal extends Modal {
       await this.plugin.createPage(this.name);
       this.close();
     });
+  }
+}
+
+class PageManagerModal extends Modal {
+  constructor(private appRef: App, private plugin: HomeBuilderPlugin) { super(appRef); }
+  onOpen() {
+    this.contentEl.addClass("hb-modal");
+    this.contentEl.createEl("h2", { text: "管理主页" });
+    new Setting(this.contentEl).setName("当前主页名称").addText((text) => text.setValue(this.plugin.config.pageName).onChange((value) => this.plugin.config.pageName = value)).addButton((button) => button.setButtonText("保存名称").onClick(async () => {
+      await this.plugin.renamePage(this.plugin.config.pageName);
+      new Notice("主页名称已更新。");
+    }));
+    new Setting(this.contentEl).setName("新建主页").setDesc("从起步模板创建一张独立主页。").addButton((button) => button.setButtonText("新建").setCta().onClick(() => {
+      this.close();
+      new NewHomeModal(this.appRef, this.plugin).open();
+    }));
+    new Setting(this.contentEl).setName("删除当前主页").setDesc("至少会保留一张主页。").addButton((button) => button.setButtonText("删除").setWarning().onClick(() => new ConfirmModal(this.appRef, "删除当前主页？", "此主页的布局、模块和主题设置将被删除。", async () => {
+      await this.plugin.deleteActivePage();
+      this.close();
+    }).open()));
+  }
+}
+
+class TemplateModal extends Modal {
+  constructor(private appRef: App, private plugin: HomeBuilderPlugin) { super(appRef); }
+  onOpen() {
+    this.contentEl.addClass("hb-modal");
+    this.contentEl.createEl("h2", { text: "选择主页模板" });
+    const choices: Array<["xiaoxin" | "focus" | "blank", string, string]> = [
+      ["xiaoxin", "小新知识库", "快捷入口、今日待办和阅读进度"],
+      ["focus", "专注极简", "大号今日待办与少量常用入口"],
+      ["blank", "空白主页", "从零添加自己的模块"],
+    ];
+    for (const [id, title, description] of choices) {
+      new Setting(this.contentEl).setName(title).setDesc(description).addButton((button) => button.setButtonText("应用").onClick(() => new ConfirmModal(this.appRef, `应用“${title}”模板？`, "会替换当前主页的三端模块布局。", async () => {
+        await this.plugin.applyTemplate(id);
+        this.close();
+      }).open()));
+    }
   }
 }
 
