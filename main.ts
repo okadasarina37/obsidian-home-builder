@@ -743,7 +743,7 @@ class HomeBuilderView extends ItemView {
     const grid = this.contentEl.querySelector<HTMLElement>(".hb-grid");
     if (grid) {
       grid.querySelector(".hb-empty")?.remove();
-      await this.renderModule(grid, created, layout);
+      this.renderInsertedModule(grid, created, layout);
     } else {
       await this.render();
     }
@@ -756,6 +756,50 @@ class HomeBuilderView extends ItemView {
       // precise persistence warning instead of pretending the add failed.
       new Notice(`“${label}”已显示，但暂未保存：${String(error)}`, 10000);
     }
+  }
+
+  /**
+   * iOS-safe insertion path.  It intentionally uses native buttons instead
+   * of Obsidian ButtonComponent, which is the only part of the normal card
+   * renderer that can fail while a modal is closing on mobile WebKit.
+   */
+  private renderInsertedModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
+    const card = grid.createDiv({ cls: "hb-module hb-span-1" });
+    const title = card.createEl("h2", { text: module.title || "未命名模块" });
+    title.addClass("hb-inserted-module-title");
+    const controls = card.createDiv({ cls: "hb-module-controls" });
+    const addButton = (text: string, handler: () => void | Promise<void>, danger = false) => {
+      const button = controls.createEl("button", { text, attr: { type: "button", "aria-label": text } });
+      if (danger) button.addClass("mod-warning");
+      button.onclick = () => void handler();
+      return button;
+    };
+    const persist = async () => {
+      try { await this.plugin.saveConfig("编辑模块", false); }
+      catch (error) { new Notice(`模块已修改，但暂未保存：${String(error)}`, 10000); }
+    };
+    addButton("编辑", () => this.openModuleEditor(module));
+    addButton("上移", async () => {
+      const index = layout.modules.indexOf(module);
+      if (index <= 0) return;
+      [layout.modules[index - 1], layout.modules[index]] = [layout.modules[index], layout.modules[index - 1]];
+      card.previousElementSibling?.before(card);
+      await persist();
+    });
+    addButton("下移", async () => {
+      const index = layout.modules.indexOf(module);
+      if (index < 0 || index >= layout.modules.length - 1) return;
+      [layout.modules[index], layout.modules[index + 1]] = [layout.modules[index + 1], layout.modules[index]];
+      card.nextElementSibling?.after(card);
+      await persist();
+    });
+    addButton("删除", async () => {
+      const index = layout.modules.indexOf(module);
+      if (index >= 0) layout.modules.splice(index, 1);
+      card.remove();
+      await persist();
+    }, true);
+    card.createEl("p", { text: "模块已添加。可直接使用上方按钮编辑、上移、下移或删除；完成编辑后预览内容。", cls: "hb-muted" });
   }
 
   private async renderModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
