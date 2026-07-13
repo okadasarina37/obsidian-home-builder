@@ -17,7 +17,7 @@ import {
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-const PLUGIN_VERSION = "0.3.16";
+const PLUGIN_VERSION = "0.3.17";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
@@ -712,6 +712,10 @@ class HomeBuilderView extends ItemView {
         }
       }
     }
+    const bottomSpacer = document.createElement("div");
+    bottomSpacer.className = "hb-mobile-bottom-spacer";
+    bottomSpacer.setAttribute("aria-hidden", "true");
+    grid.appendChild(bottomSpacer);
     this.renderStage = "完成";
   }
 

@@ -26,7 +26,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-var PLUGIN_VERSION = "0.3.16";
+var PLUGIN_VERSION = "0.3.17";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
@@ -639,6 +639,10 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
         }
       }
     }
+    const bottomSpacer = document.createElement("div");
+    bottomSpacer.className = "hb-mobile-bottom-spacer";
+    bottomSpacer.setAttribute("aria-hidden", "true");
+    grid.appendChild(bottomSpacer);
     this.renderStage = "\u5B8C\u6210";
   }
   renderEditHint(container) {
