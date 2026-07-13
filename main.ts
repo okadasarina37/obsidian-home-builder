@@ -669,7 +669,38 @@ class HomeBuilderView extends ItemView {
       });
     }
     for (const module of layout.modules) {
-      if (this.editing || !module.hiddenOn?.includes(this.device())) await this.renderModule(grid, module, layout);
+      if (this.editing || !module.hiddenOn?.includes(this.device())) {
+        const childCount = grid.childElementCount;
+        try {
+          await this.renderModule(grid, module, layout);
+        } catch (error) {
+          while (grid.childElementCount > childCount) grid.lastElementChild?.remove();
+          const failed = document.createElement("section");
+          failed.className = "hb-module hb-span-1";
+          const title = document.createElement("h2");
+          title.textContent = module.title || "未命名模块";
+          const message = document.createElement("p");
+          message.className = "hb-error";
+          message.textContent = `模块卡片显示失败：${String(error)}`;
+          failed.append(title, message);
+          if (this.editing) {
+            const edit = document.createElement("button");
+            edit.type = "button";
+            edit.textContent = "编辑模块";
+            edit.onclick = () => this.openModuleEditor(module);
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "mod-warning";
+            remove.textContent = "删除模块";
+            remove.onclick = () => new ConfirmModal(this.app, "删除这个模块？", "模块的数据和布局将被移除。", async () => {
+              layout.modules.splice(layout.modules.indexOf(module), 1);
+              await this.plugin.saveConfig();
+            }).open();
+            failed.append(edit, remove);
+          }
+          grid.appendChild(failed);
+        }
+      }
     }
   }
 
@@ -817,36 +848,61 @@ class HomeBuilderView extends ItemView {
     titleRow.createEl("h2", { text: module.title || "未命名模块" });
     if (this.editing) {
       const controls = titleRow.createDiv({ cls: "hb-module-controls" });
-      const action = (icon: string, label: string) => {
-        const button = new ButtonComponent(controls).setTooltip(label);
-        if (this.device() === "mobile") button.setButtonText(label);
-        else button.setIcon(icon);
-        button.buttonEl.setAttribute("aria-label", label);
-        return button;
-      };
-      action("pencil", "编辑").onClick(() => this.openModuleEditor(module));
-      action("copy", "复制").onClick(async () => {
+      const duplicate = async () => {
         const copy = clone(module);
         copy.id = newId();
         copy.title = `${module.title} 副本`;
         layout.modules.splice(layout.modules.indexOf(module) + 1, 0, copy);
         await this.plugin.saveConfig();
-      });
-      action("arrow-up", "上移").setDisabled(layout.modules.indexOf(module) === 0).onClick(async () => { this.move(layout, module, -1); });
-      action("arrow-down", "下移").setDisabled(layout.modules.indexOf(module) === layout.modules.length - 1).onClick(async () => { this.move(layout, module, 1); });
-      action("trash-2", "删除").setWarning().onClick(() => new ConfirmModal(this.app, "删除这个模块？", "模块的数据和布局将被移除。", async () => { layout.modules.splice(layout.modules.indexOf(module), 1); await this.plugin.saveConfig(); }).open());
-      action("columns-2", "调整宽度").onClick(async () => {
+      };
+      const remove = () => new ConfirmModal(this.app, "删除这个模块？", "模块的数据和布局将被移除。", async () => {
+        layout.modules.splice(layout.modules.indexOf(module), 1);
+        await this.plugin.saveConfig();
+      }).open();
+      const resize = async () => {
         const max = this.device() === "mobile" ? 1 : this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
         module.span = ((module.span ?? 1) % max + 1) as Span;
         await this.plugin.saveConfig("调整模块宽度");
-      });
-      action(hidden ? "eye" : "eye-off", hidden ? "显示模块" : "隐藏模块").onClick(async () => {
+      };
+      const toggleVisibility = async () => {
         const device = this.device();
         const set = new Set(module.hiddenOn ?? []);
         if (set.has(device)) set.delete(device); else set.add(device);
         module.hiddenOn = [...set];
         await this.plugin.saveConfig("更新设备可见性");
-      });
+      };
+
+      if (this.device() === "mobile") {
+        const action = (label: string, handler: () => void | Promise<void>, disabled = false, warning = false) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.setAttribute("aria-label", label);
+          button.disabled = disabled;
+          if (warning) button.className = "mod-warning";
+          button.onclick = () => void handler();
+          controls.appendChild(button);
+        };
+        action("编辑", () => this.openModuleEditor(module));
+        action("复制", duplicate);
+        action("上移", () => this.move(layout, module, -1), layout.modules.indexOf(module) === 0);
+        action("下移", () => this.move(layout, module, 1), layout.modules.indexOf(module) === layout.modules.length - 1);
+        action("删除", remove, false, true);
+        action(hidden ? "显示" : "隐藏", toggleVisibility);
+      } else {
+        const action = (icon: string, label: string) => {
+          const button = new ButtonComponent(controls).setTooltip(label).setIcon(icon);
+          button.buttonEl.setAttribute("aria-label", label);
+          return button;
+        };
+        action("pencil", "编辑").onClick(() => this.openModuleEditor(module));
+        action("copy", "复制").onClick(duplicate);
+        action("arrow-up", "上移").setDisabled(layout.modules.indexOf(module) === 0).onClick(() => this.move(layout, module, -1));
+        action("arrow-down", "下移").setDisabled(layout.modules.indexOf(module) === layout.modules.length - 1).onClick(() => this.move(layout, module, 1));
+        action("trash-2", "删除").setWarning().onClick(remove);
+        action("columns-2", "调整宽度").onClick(resize);
+        action(hidden ? "eye" : "eye-off", hidden ? "显示模块" : "隐藏模块").onClick(toggleVisibility);
+      }
     }
     const body = card.createDiv({ cls: "hb-module-body" });
     // On iOS, rendering a Tasks/Dataview block while its module is being

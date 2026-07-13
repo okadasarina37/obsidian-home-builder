@@ -549,7 +549,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     return (_a = this.selectedDevice) != null ? _a : this.plugin.getDevice();
   }
   async render() {
-    var _a;
+    var _a, _b;
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("home-builder-view");
@@ -596,7 +596,38 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
       });
     }
     for (const module2 of layout.modules) {
-      if (this.editing || !((_a = module2.hiddenOn) == null ? void 0 : _a.includes(this.device()))) await this.renderModule(grid, module2, layout);
+      if (this.editing || !((_a = module2.hiddenOn) == null ? void 0 : _a.includes(this.device()))) {
+        const childCount = grid.childElementCount;
+        try {
+          await this.renderModule(grid, module2, layout);
+        } catch (error) {
+          while (grid.childElementCount > childCount) (_b = grid.lastElementChild) == null ? void 0 : _b.remove();
+          const failed = document.createElement("section");
+          failed.className = "hb-module hb-span-1";
+          const title = document.createElement("h2");
+          title.textContent = module2.title || "\u672A\u547D\u540D\u6A21\u5757";
+          const message = document.createElement("p");
+          message.className = "hb-error";
+          message.textContent = `\u6A21\u5757\u5361\u7247\u663E\u793A\u5931\u8D25\uFF1A${String(error)}`;
+          failed.append(title, message);
+          if (this.editing) {
+            const edit = document.createElement("button");
+            edit.type = "button";
+            edit.textContent = "\u7F16\u8F91\u6A21\u5757";
+            edit.onclick = () => this.openModuleEditor(module2);
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "mod-warning";
+            remove.textContent = "\u5220\u9664\u6A21\u5757";
+            remove.onclick = () => new ConfirmModal(this.app, "\u5220\u9664\u8FD9\u4E2A\u6A21\u5757\uFF1F", "\u6A21\u5757\u7684\u6570\u636E\u548C\u5E03\u5C40\u5C06\u88AB\u79FB\u9664\u3002", async () => {
+              layout.modules.splice(layout.modules.indexOf(module2), 1);
+              await this.plugin.saveConfig();
+            }).open();
+            failed.append(edit, remove);
+          }
+          grid.appendChild(failed);
+        }
+      }
     }
   }
   renderEditHint(container) {
@@ -748,38 +779,24 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     titleRow.createEl("h2", { text: module2.title || "\u672A\u547D\u540D\u6A21\u5757" });
     if (this.editing) {
       const controls = titleRow.createDiv({ cls: "hb-module-controls" });
-      const action = (icon, label) => {
-        const button = new import_obsidian.ButtonComponent(controls).setTooltip(label);
-        if (this.device() === "mobile") button.setButtonText(label);
-        else button.setIcon(icon);
-        button.buttonEl.setAttribute("aria-label", label);
-        return button;
-      };
-      action("pencil", "\u7F16\u8F91").onClick(() => this.openModuleEditor(module2));
-      action("copy", "\u590D\u5236").onClick(async () => {
+      const duplicate = async () => {
         const copy = clone(module2);
         copy.id = newId();
         copy.title = `${module2.title} \u526F\u672C`;
         layout.modules.splice(layout.modules.indexOf(module2) + 1, 0, copy);
         await this.plugin.saveConfig();
-      });
-      action("arrow-up", "\u4E0A\u79FB").setDisabled(layout.modules.indexOf(module2) === 0).onClick(async () => {
-        this.move(layout, module2, -1);
-      });
-      action("arrow-down", "\u4E0B\u79FB").setDisabled(layout.modules.indexOf(module2) === layout.modules.length - 1).onClick(async () => {
-        this.move(layout, module2, 1);
-      });
-      action("trash-2", "\u5220\u9664").setWarning().onClick(() => new ConfirmModal(this.app, "\u5220\u9664\u8FD9\u4E2A\u6A21\u5757\uFF1F", "\u6A21\u5757\u7684\u6570\u636E\u548C\u5E03\u5C40\u5C06\u88AB\u79FB\u9664\u3002", async () => {
+      };
+      const remove = () => new ConfirmModal(this.app, "\u5220\u9664\u8FD9\u4E2A\u6A21\u5757\uFF1F", "\u6A21\u5757\u7684\u6570\u636E\u548C\u5E03\u5C40\u5C06\u88AB\u79FB\u9664\u3002", async () => {
         layout.modules.splice(layout.modules.indexOf(module2), 1);
         await this.plugin.saveConfig();
-      }).open());
-      action("columns-2", "\u8C03\u6574\u5BBD\u5EA6").onClick(async () => {
+      }).open();
+      const resize = async () => {
         var _a2;
         const max = this.device() === "mobile" ? 1 : this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
         module2.span = ((_a2 = module2.span) != null ? _a2 : 1) % max + 1;
         await this.plugin.saveConfig("\u8C03\u6574\u6A21\u5757\u5BBD\u5EA6");
-      });
-      action(hidden ? "eye" : "eye-off", hidden ? "\u663E\u793A\u6A21\u5757" : "\u9690\u85CF\u6A21\u5757").onClick(async () => {
+      };
+      const toggleVisibility = async () => {
         var _a2;
         const device = this.device();
         const set = new Set((_a2 = module2.hiddenOn) != null ? _a2 : []);
@@ -787,7 +804,38 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
         else set.add(device);
         module2.hiddenOn = [...set];
         await this.plugin.saveConfig("\u66F4\u65B0\u8BBE\u5907\u53EF\u89C1\u6027");
-      });
+      };
+      if (this.device() === "mobile") {
+        const action = (label, handler, disabled = false, warning = false) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.setAttribute("aria-label", label);
+          button.disabled = disabled;
+          if (warning) button.className = "mod-warning";
+          button.onclick = () => void handler();
+          controls.appendChild(button);
+        };
+        action("\u7F16\u8F91", () => this.openModuleEditor(module2));
+        action("\u590D\u5236", duplicate);
+        action("\u4E0A\u79FB", () => this.move(layout, module2, -1), layout.modules.indexOf(module2) === 0);
+        action("\u4E0B\u79FB", () => this.move(layout, module2, 1), layout.modules.indexOf(module2) === layout.modules.length - 1);
+        action("\u5220\u9664", remove, false, true);
+        action(hidden ? "\u663E\u793A" : "\u9690\u85CF", toggleVisibility);
+      } else {
+        const action = (icon, label) => {
+          const button = new import_obsidian.ButtonComponent(controls).setTooltip(label).setIcon(icon);
+          button.buttonEl.setAttribute("aria-label", label);
+          return button;
+        };
+        action("pencil", "\u7F16\u8F91").onClick(() => this.openModuleEditor(module2));
+        action("copy", "\u590D\u5236").onClick(duplicate);
+        action("arrow-up", "\u4E0A\u79FB").setDisabled(layout.modules.indexOf(module2) === 0).onClick(() => this.move(layout, module2, -1));
+        action("arrow-down", "\u4E0B\u79FB").setDisabled(layout.modules.indexOf(module2) === layout.modules.length - 1).onClick(() => this.move(layout, module2, 1));
+        action("trash-2", "\u5220\u9664").setWarning().onClick(remove);
+        action("columns-2", "\u8C03\u6574\u5BBD\u5EA6").onClick(resize);
+        action(hidden ? "eye" : "eye-off", hidden ? "\u663E\u793A\u6A21\u5757" : "\u9690\u85CF\u6A21\u5757").onClick(toggleVisibility);
+      }
     }
     const body = card.createDiv({ cls: "hb-module-body" });
     if (this.editing && (module2.kind === "markdown" || module2.kind === "bookshelf" || module2.kind === "assets" || module2.kind === "aiusage")) {
