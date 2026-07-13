@@ -686,15 +686,24 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
    * renderer that can fail while a modal is closing on mobile WebKit.
    */
   renderInsertedModule(grid, module2, layout) {
-    const card = grid.createDiv({ cls: "hb-module" });
-    card.classList.add("hb-span-1");
-    const title = card.createEl("h2", { text: module2.title || "\u672A\u547D\u540D\u6A21\u5757" });
-    title.addClass("hb-inserted-module-title");
-    const controls = card.createDiv({ cls: "hb-module-controls" });
+    const card = document.createElement("section");
+    card.className = "hb-module hb-span-1";
+    grid.appendChild(card);
+    const title = document.createElement("h2");
+    title.className = "hb-inserted-module-title";
+    title.textContent = module2.title || "\u672A\u547D\u540D\u6A21\u5757";
+    card.appendChild(title);
+    const controls = document.createElement("div");
+    controls.className = "hb-module-controls";
+    card.appendChild(controls);
     const addButton = (text, handler, danger = false) => {
-      const button = controls.createEl("button", { text, attr: { type: "button", "aria-label": text } });
-      if (danger) button.addClass("mod-warning");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = text;
+      button.setAttribute("aria-label", text);
+      if (danger) button.className = "mod-warning";
       button.onclick = () => void handler();
+      controls.appendChild(button);
       return button;
     };
     const persist = async () => {
@@ -727,7 +736,10 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
       card.remove();
       await persist();
     }, true);
-    card.createEl("p", { text: "\u6A21\u5757\u5DF2\u6DFB\u52A0\u3002\u53EF\u76F4\u63A5\u4F7F\u7528\u4E0A\u65B9\u6309\u94AE\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\uFF1B\u5B8C\u6210\u7F16\u8F91\u540E\u9884\u89C8\u5185\u5BB9\u3002", cls: "hb-muted" });
+    const hint = document.createElement("p");
+    hint.className = "hb-muted";
+    hint.textContent = "\u6A21\u5757\u5DF2\u6DFB\u52A0\u3002\u53EF\u76F4\u63A5\u4F7F\u7528\u4E0A\u65B9\u6309\u94AE\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\uFF1B\u5B8C\u6210\u7F16\u8F91\u540E\u9884\u89C8\u5185\u5BB9\u3002";
+    card.appendChild(hint);
   }
   async renderModule(grid, module2, layout) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;
