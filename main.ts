@@ -765,15 +765,26 @@ class HomeBuilderView extends ItemView {
    * renderer that can fail while a modal is closing on mobile WebKit.
    */
   private renderInsertedModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
-    const card = grid.createDiv({ cls: "hb-module" });
-    card.classList.add("hb-span-1");
-    const title = card.createEl("h2", { text: module.title || "未命名模块" });
-    title.addClass("hb-inserted-module-title");
-    const controls = card.createDiv({ cls: "hb-module-controls" });
+    // Use only platform DOM APIs here. Obsidian's createEl/addClass helpers
+    // surface a Safari DOMException in some mobile WebViews during insertion.
+    const card = document.createElement("section");
+    card.className = "hb-module hb-span-1";
+    grid.appendChild(card);
+    const title = document.createElement("h2");
+    title.className = "hb-inserted-module-title";
+    title.textContent = module.title || "未命名模块";
+    card.appendChild(title);
+    const controls = document.createElement("div");
+    controls.className = "hb-module-controls";
+    card.appendChild(controls);
     const addButton = (text: string, handler: () => void | Promise<void>, danger = false) => {
-      const button = controls.createEl("button", { text, attr: { type: "button", "aria-label": text } });
-      if (danger) button.addClass("mod-warning");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = text;
+      button.setAttribute("aria-label", text);
+      if (danger) button.className = "mod-warning";
       button.onclick = () => void handler();
+      controls.appendChild(button);
       return button;
     };
     const persist = async () => {
@@ -801,7 +812,10 @@ class HomeBuilderView extends ItemView {
       card.remove();
       await persist();
     }, true);
-    card.createEl("p", { text: "模块已添加。可直接使用上方按钮编辑、上移、下移或删除；完成编辑后预览内容。", cls: "hb-muted" });
+    const hint = document.createElement("p");
+    hint.className = "hb-muted";
+    hint.textContent = "模块已添加。可直接使用上方按钮编辑、上移、下移或删除；完成编辑后预览内容。";
+    card.appendChild(hint);
   }
 
   private async renderModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
