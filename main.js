@@ -607,7 +607,8 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
   renderBanner(container) {
     const banner = this.plugin.config.banner;
     if (!banner.enabled) return;
-    const el = container.createDiv({ cls: `hb-banner${banner.rounded ? " hb-banner-rounded" : ""}` });
+    const el = container.createDiv({ cls: "hb-banner" });
+    if (banner.rounded) el.classList.add("hb-banner-rounded");
     el.style.setProperty("--hb-banner-height", `${Math.max(120, banner.height)}px`);
     el.style.setProperty("--hb-banner-overlay", String(Math.max(0, Math.min(0.9, banner.overlay))));
     if (banner.imagePath) {
@@ -685,7 +686,8 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
    * renderer that can fail while a modal is closing on mobile WebKit.
    */
   renderInsertedModule(grid, module2, layout) {
-    const card = grid.createDiv({ cls: "hb-module hb-span-1" });
+    const card = grid.createDiv({ cls: "hb-module" });
+    card.classList.add("hb-span-1");
     const title = card.createEl("h2", { text: module2.title || "\u672A\u547D\u540D\u6A21\u5757" });
     title.addClass("hb-inserted-module-title");
     const controls = card.createDiv({ cls: "hb-module-controls" });
@@ -730,7 +732,9 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
   async renderModule(grid, module2, layout) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;
     const hidden = (_a = module2.hiddenOn) == null ? void 0 : _a.includes(this.device());
-    const card = grid.createDiv({ cls: `hb-module hb-span-${(_b = module2.span) != null ? _b : 1}${hidden ? " hb-device-hidden" : ""}` });
+    const card = grid.createDiv({ cls: "hb-module" });
+    card.classList.add(`hb-span-${(_b = module2.span) != null ? _b : 1}`);
+    if (hidden) card.classList.add("hb-device-hidden");
     if (this.editing && this.device() !== "mobile") {
       card.draggable = true;
       card.addClass("hb-draggable");
@@ -820,8 +824,10 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
       this.renderCountdown(body, module2);
     } else if (module2.kind === "image") {
       const path = (_g = (_f = module2.options) == null ? void 0 : _f.imagePath) != null ? _g : "";
-      if (path) body.createEl("img", { cls: `hb-content-image hb-image-${(_i = (_h = module2.options) == null ? void 0 : _h.imageFit) != null ? _i : "cover"}`, attr: { src: vaultImageUrl(this.app, path), alt: ((_j = module2.options) == null ? void 0 : _j.imageAlt) || module2.title, loading: "lazy" } });
-      else body.createEl("p", { text: "\u70B9\u7F16\u8F91\u6A21\u5757\u9009\u62E9\u56FE\u7247\u3002", cls: "hb-muted" });
+      if (path) {
+        const image = body.createEl("img", { cls: "hb-content-image", attr: { src: vaultImageUrl(this.app, path), alt: ((_h = module2.options) == null ? void 0 : _h.imageAlt) || module2.title, loading: "lazy" } });
+        image.classList.add(`hb-image-${(_j = (_i = module2.options) == null ? void 0 : _i.imageFit) != null ? _j : "cover"}`);
+      } else body.createEl("p", { text: "\u70B9\u7F16\u8F91\u6A21\u5757\u9009\u62E9\u56FE\u7247\u3002", cls: "hb-muted" });
     } else if (module2.kind === "weather") {
       const weather = body.createDiv({ cls: "hb-weather" });
       weather.createEl("strong", { text: ((_k = module2.options) == null ? void 0 : _k.weatherTemperature) || "--\xB0" });
