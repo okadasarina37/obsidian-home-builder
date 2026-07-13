@@ -33,6 +33,12 @@
 .hb-banner-text p { margin: 8px 0 0; font-size: 1rem; }
 .hb-grid { max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: repeat(var(--hb-columns, 2), minmax(0, 1fr)); gap: 16px; align-items: start; }
 .hb-module { min-width: 0; border: 1px solid color-mix(in srgb, var(--background-modifier-border), transparent 12%); border-radius: 16px; padding: 16px; background: rgb(var(--background-primary-rgb) / var(--hb-card-opacity)); box-shadow: 0 8px 32px rgb(0 0 0 / .06); overflow: hidden; }
+.hb-module.hb-shadow-none { box-shadow: none; }
+.hb-module.hb-shadow-soft { box-shadow: 0 8px 32px rgb(0 0 0 / .08); }
+.hb-module.hb-shadow-strong { box-shadow: 0 14px 42px rgb(0 0 0 / .22); }
+.hb-module.hb-padding-compact { padding: 10px; }
+.hb-module.hb-padding-normal { padding: 16px; }
+.hb-module.hb-padding-comfortable { padding: 22px; }
 .hb-draggable { cursor: grab; }
 .hb-draggable:active { cursor: grabbing; }
 .hb-span-2 { grid-column: span 2; }
@@ -77,7 +83,15 @@
 .hb-calendar-weekday { padding: 4px 0; color: var(--text-muted); font-size: .78rem; }
 .hb-calendar-day { min-height: 36px; border: 0; border-radius: 8px; color: var(--text-normal); background: transparent; cursor: pointer; }
 .hb-calendar-day:hover, .hb-calendar-day:focus-visible { background: var(--background-modifier-hover); outline: 2px solid var(--hb-accent); }
-.hb-calendar-day.is-today { color: var(--text-on-accent); background: var(--hb-accent); }
+.hb-calendar-day.is-today { color: var(--text-on-accent); background: var(--hb-calendar-accent, var(--hb-accent)); }
+.hb-calendar-day.is-weekend:not(.is-today) { color: color-mix(in srgb, var(--hb-calendar-accent, var(--hb-accent)), var(--text-normal) 45%); }
+.hb-calendar-boxed .hb-calendar-day { border: 1px solid var(--background-modifier-border); background: color-mix(in srgb, var(--background-secondary), transparent 18%); }
+.hb-calendar-boxed .hb-calendar-day.is-today { background: var(--hb-calendar-accent, var(--hb-accent)); }
+.hb-calendar-compact { gap: 2px; }
+.hb-calendar-compact .hb-calendar-day { min-height: 30px; padding: 2px; font-size: .82rem; }
+.hb-calendar-shape-circle .hb-calendar-day { border-radius: 999px; aspect-ratio: 1; }
+.hb-calendar-shape-square .hb-calendar-day { border-radius: 0; }
+.hb-calendar-shape-rounded .hb-calendar-day { border-radius: 8px; }
 .hb-picker-search { width: 100%; min-height: 44px; margin-bottom: 10px; }
 .hb-picker-list { max-height: min(55vh, 480px); overflow: auto; border: 1px solid var(--background-modifier-border); border-radius: 10px; }
 .hb-picker-item { display: block; width: 100%; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--background-modifier-border); text-align: left; color: var(--text-normal); background: transparent; cursor: pointer; overflow-wrap: anywhere; }

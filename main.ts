@@ -17,7 +17,7 @@ import {
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-const PLUGIN_VERSION = "0.3.17";
+const PLUGIN_VERSION = "0.4.0";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
@@ -40,6 +40,14 @@ interface HomeModule {
   markdown?: string;
   text?: string;
   queryKind?: "raw" | "tasks" | "dataview";
+  style?: {
+    background?: string;
+    textColor?: string;
+    borderColor?: string;
+    radius?: number;
+    shadow?: "none" | "soft" | "strong";
+    padding?: "compact" | "normal" | "comfortable";
+  };
   query?: {
     path?: string;
     tag?: string;
@@ -61,6 +69,10 @@ interface HomeModule {
     targetDate?: string;
     label?: string;
     dailyFolder?: string;
+    calendarStyle?: "minimal" | "boxed" | "compact";
+    calendarWeekStart?: 0 | 1;
+    calendarAccent?: string;
+    calendarDayShape?: "rounded" | "circle" | "square";
     shelfPath?: string;
     assetPath?: string;
     usagePath?: string;
@@ -634,6 +646,8 @@ class HomeBuilderView extends ItemView {
     contentEl.style.setProperty("--hb-card-opacity", String(theme.cardOpacity));
     contentEl.style.setProperty("--hb-columns", String(this.plugin.config.settings.gridColumns));
     contentEl.classList.remove("hb-bg-color", "hb-bg-image", "hb-bg-gradient");
+    contentEl.style.background = "";
+    contentEl.style.backgroundImage = "";
     if (theme.backgroundType !== "none") {
       contentEl.addClass(`hb-bg-${theme.backgroundType}`);
       if (theme.backgroundType === "image") contentEl.style.backgroundImage = `linear-gradient(rgb(var(--background-primary-rgb) / .78), rgb(var(--background-primary-rgb) / .9)), url("${vaultImageUrl(this.app, theme.backgroundValue)}")`;
@@ -844,6 +858,16 @@ class HomeBuilderView extends ItemView {
     const hidden = module.hiddenOn?.includes(this.device());
     const card = grid.createDiv({ cls: "hb-module" });
     card.classList.add(`hb-span-${module.span ?? 1}`);
+    if (module.style?.background) card.style.background = module.style.background;
+    if (module.style?.textColor) {
+      card.style.color = module.style.textColor;
+      card.style.setProperty("--text-normal", module.style.textColor);
+      card.style.setProperty("--text-muted", `color-mix(in srgb, ${module.style.textColor}, transparent 28%)`);
+    }
+    if (module.style?.borderColor) card.style.borderColor = module.style.borderColor;
+    if (module.style?.radius !== undefined) card.style.borderRadius = `${module.style.radius}px`;
+    card.classList.add(`hb-shadow-${module.style?.shadow ?? "soft"}`);
+    card.classList.add(`hb-padding-${module.style?.padding ?? "normal"}`);
     if (hidden) card.classList.add("hb-device-hidden");
     if (this.editing && this.device() !== "mobile") {
       card.draggable = true;
@@ -1011,8 +1035,15 @@ class HomeBuilderView extends ItemView {
     const next = new ButtonComponent(top).setIcon("chevron-right").setTooltip("下个月");
     next.onClick(async () => { this.calendarOffsets.set(module.id, offset + 1); await this.render(); });
     const days = body.createDiv({ cls: "hb-calendar" });
-    for (const label of ["日", "一", "二", "三", "四", "五", "六"]) days.createEl("span", { text: label, cls: "hb-calendar-weekday" });
-    for (let empty = 0; empty < shown.getDay(); empty++) days.createEl("span", { cls: "hb-calendar-empty" });
+    const calendarStyle = module.options?.calendarStyle ?? "minimal";
+    const weekStart = module.options?.calendarWeekStart ?? 0;
+    const dayShape = module.options?.calendarDayShape ?? "rounded";
+    days.classList.add(`hb-calendar-${calendarStyle}`, `hb-calendar-shape-${dayShape}`);
+    days.style.setProperty("--hb-calendar-accent", module.options?.calendarAccent || "var(--hb-accent)");
+    const weekLabels = weekStart === 1 ? ["一", "二", "三", "四", "五", "六", "日"] : ["日", "一", "二", "三", "四", "五", "六"];
+    for (const label of weekLabels) days.createEl("span", { text: label, cls: "hb-calendar-weekday" });
+    const leadingEmpty = (shown.getDay() - weekStart + 7) % 7;
+    for (let empty = 0; empty < leadingEmpty; empty++) days.createEl("span", { cls: "hb-calendar-empty" });
     const total = new Date(shown.getFullYear(), shown.getMonth() + 1, 0).getDate();
     const today = new Date();
     for (let day = 1; day <= total; day++) {
@@ -1021,6 +1052,7 @@ class HomeBuilderView extends ItemView {
       const button = days.createEl("button", { text: String(day), cls: "hb-calendar-day" });
       button.setAttribute("aria-label", `打开 ${path}`);
       if (date.toDateString() === today.toDateString()) button.addClass("is-today");
+      if (date.getDay() === 0 || date.getDay() === 6) button.addClass("is-weekend");
       button.onclick = () => void this.app.workspace.openLinkText(path, this.plugin.config.configPath, true);
     }
   }
@@ -1133,6 +1165,26 @@ class ModuleModal extends Modal {
       new Setting(contentEl).setName("每日笔记目录").setDesc("点击日期时打开该目录下的 YYYY-MM-DD 笔记。")
         .addText((text) => text.setValue(this.module.options?.dailyFolder ?? "02_日历/每日").onChange((value) => this.module.options!.dailyFolder = value.trim()));
       new Setting(contentEl).setName("选择目录").addButton((button) => button.setButtonText("浏览库内文件夹").onClick(() => new VaultPickerModal(this.appRef, "选择每日笔记目录", "folder", (path) => this.module.options!.dailyFolder = path).open()));
+      new Setting(contentEl).setName("日历样式").addDropdown((drop) => drop
+        .addOption("minimal", "极简")
+        .addOption("boxed", "日期方格")
+        .addOption("compact", "紧凑")
+        .setValue(this.module.options?.calendarStyle ?? "minimal")
+        .onChange((value) => this.module.options!.calendarStyle = value as NonNullable<HomeModule["options"]>["calendarStyle"]));
+      new Setting(contentEl).setName("一周开始日").addDropdown((drop) => drop
+        .addOption("0", "周日")
+        .addOption("1", "周一")
+        .setValue(String(this.module.options?.calendarWeekStart ?? 0))
+        .onChange((value) => this.module.options!.calendarWeekStart = Number(value) as 0 | 1));
+      new Setting(contentEl).setName("今日颜色").addColorPicker((color) => color
+        .setValue(this.module.options?.calendarAccent ?? "#7c3aed")
+        .onChange((value) => this.module.options!.calendarAccent = value));
+      new Setting(contentEl).setName("日期形状").addDropdown((drop) => drop
+        .addOption("rounded", "圆角方块")
+        .addOption("circle", "圆形")
+        .addOption("square", "直角方块")
+        .setValue(this.module.options?.calendarDayShape ?? "rounded")
+        .onChange((value) => this.module.options!.calendarDayShape = value as NonNullable<HomeModule["options"]>["calendarDayShape"]));
     } else if (this.module.kind === "countdown") {
       this.module.options ??= {};
       new Setting(contentEl).setName("说明").addText((text) => text.setValue(this.module.options?.label ?? "倒数日").onChange((value) => this.module.options!.label = value));
@@ -1171,6 +1223,35 @@ class ModuleModal extends Modal {
       new Setting(contentEl).setName("天气描述").setDesc("仅手动模式使用。").addText((text) => text.setValue(this.module.options?.weatherText ?? "").onChange((value) => this.module.options!.weatherText = value));
       new Setting(contentEl).setName("温度").setDesc("仅手动模式使用。").addText((text) => text.setPlaceholder("25°").setValue(this.module.options?.weatherTemperature ?? "").onChange((value) => this.module.options!.weatherTemperature = value));
     }
+
+    this.module.style ??= {};
+    contentEl.createEl("h3", { text: "模块外观" });
+    new Setting(contentEl).setName("背景色").setDesc("仅修改当前模块。")
+      .addColorPicker((color) => color.setValue(this.module.style?.background ?? "#242134").onChange((value) => this.module.style!.background = value))
+      .addButton((button) => button.setButtonText("跟随主题").onClick(() => { delete this.module.style!.background; }));
+    new Setting(contentEl).setName("文字颜色")
+      .addColorPicker((color) => color.setValue(this.module.style?.textColor ?? "#ffffff").onChange((value) => this.module.style!.textColor = value))
+      .addButton((button) => button.setButtonText("跟随主题").onClick(() => { delete this.module.style!.textColor; }));
+    new Setting(contentEl).setName("边框颜色")
+      .addColorPicker((color) => color.setValue(this.module.style?.borderColor ?? "#4b465f").onChange((value) => this.module.style!.borderColor = value))
+      .addButton((button) => button.setButtonText("跟随主题").onClick(() => { delete this.module.style!.borderColor; }));
+    new Setting(contentEl).setName("圆角").addSlider((slider) => slider
+      .setLimits(0, 28, 2)
+      .setValue(this.module.style?.radius ?? 16)
+      .setDynamicTooltip()
+      .onChange((value) => this.module.style!.radius = value));
+    new Setting(contentEl).setName("阴影").addDropdown((drop) => drop
+      .addOption("none", "无")
+      .addOption("soft", "柔和")
+      .addOption("strong", "明显")
+      .setValue(this.module.style?.shadow ?? "soft")
+      .onChange((value) => this.module.style!.shadow = value as NonNullable<HomeModule["style"]>["shadow"]));
+    new Setting(contentEl).setName("内边距").addDropdown((drop) => drop
+      .addOption("compact", "紧凑")
+      .addOption("normal", "标准")
+      .addOption("comfortable", "宽松")
+      .setValue(this.module.style?.padding ?? "normal")
+      .onChange((value) => this.module.style!.padding = value as NonNullable<HomeModule["style"]>["padding"]));
     const actions = contentEl.createDiv({ cls: "modal-button-container" });
     new ButtonComponent(actions).setButtonText("取消").onClick(() => this.close());
     new ButtonComponent(actions).setButtonText("保存").setCta().onClick(async () => { await this.onSave(); this.close(); });
@@ -1190,9 +1271,27 @@ class ThemeModal extends Modal {
       .addOption("image", "图片（库内或 URL）")
       .setValue(this.plugin.config.theme.backgroundType)
       .onChange((value) => this.plugin.config.theme.backgroundType = value as HomeConfig["theme"]["backgroundType"]));
+    new Setting(contentEl).setName("纯色背景").setDesc("选色后会自动切换为纯色背景。").addColorPicker((color) => color
+      .setValue(/^#[0-9a-f]{6}$/i.test(this.plugin.config.theme.backgroundValue) ? this.plugin.config.theme.backgroundValue : "#1e1e2e")
+      .onChange((value) => {
+        this.plugin.config.theme.backgroundType = "color";
+        this.plugin.config.theme.backgroundValue = value;
+      }));
+    new Setting(contentEl).setName("渐变预设").addDropdown((drop) => drop
+      .addOption("", "不使用预设")
+      .addOption("linear-gradient(145deg, #171426, #2b1f47)", "深紫夜色")
+      .addOption("linear-gradient(145deg, #12212b, #193b3a)", "墨绿森林")
+      .addOption("linear-gradient(145deg, #f4ece1, #e8d7c2)", "暖色纸张")
+      .addOption("linear-gradient(145deg, #182235, #273c5a)", "深蓝雾面")
+      .setValue("")
+      .onChange((value) => {
+        if (!value) return;
+        this.plugin.config.theme.backgroundType = "gradient";
+        this.plugin.config.theme.backgroundValue = value;
+      }));
     new Setting(contentEl).setName("背景值").setDesc("纯色填 #1e1e2e；渐变填 linear-gradient(...)；图片可填库内路径或 URL。").addText((text) => text.setValue(this.plugin.config.theme.backgroundValue).onChange((value) => this.plugin.config.theme.backgroundValue = value));
     new Setting(contentEl).setName("选择库内背景图").addButton((button) => button.setButtonText("选择图片").onClick(() => new VaultPickerModal(this.appRef, "选择背景图", "image", (path) => this.plugin.config.theme.backgroundValue = path).open()));
-    new Setting(contentEl).setName("强调色").addText((text) => text.setValue(this.plugin.config.theme.accent).onChange((value) => this.plugin.config.theme.accent = value));
+    new Setting(contentEl).setName("强调色").addColorPicker((color) => color.setValue(this.plugin.config.theme.accent).onChange((value) => this.plugin.config.theme.accent = value));
     new Setting(contentEl).setName("卡片不透明度").addSlider((slider) => slider.setLimits(.45, 1, .05).setValue(this.plugin.config.theme.cardOpacity).setDynamicTooltip().onChange((value) => this.plugin.config.theme.cardOpacity = value));
     const actions = contentEl.createDiv({ cls: "modal-button-container" });
     new ButtonComponent(actions).setButtonText("取消").onClick(() => this.close());

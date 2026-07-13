@@ -26,7 +26,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-var PLUGIN_VERSION = "0.3.17";
+var PLUGIN_VERSION = "0.4.0";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
@@ -562,6 +562,8 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     contentEl.style.setProperty("--hb-card-opacity", String(theme.cardOpacity));
     contentEl.style.setProperty("--hb-columns", String(this.plugin.config.settings.gridColumns));
     contentEl.classList.remove("hb-bg-color", "hb-bg-image", "hb-bg-gradient");
+    contentEl.style.background = "";
+    contentEl.style.backgroundImage = "";
     if (theme.backgroundType !== "none") {
       contentEl.addClass(`hb-bg-${theme.backgroundType}`);
       if (theme.backgroundType === "image") contentEl.style.backgroundImage = `linear-gradient(rgb(var(--background-primary-rgb) / .78), rgb(var(--background-primary-rgb) / .9)), url("${vaultImageUrl(this.app, theme.backgroundValue)}")`;
@@ -767,11 +769,21 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     window.setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
   }
   async renderModule(grid, module2, layout) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B;
     this.renderStage = `\u6A21\u5757\u201C${module2.title || "\u672A\u547D\u540D"}\u201D\uFF1A\u521B\u5EFA\u5361\u7247`;
     const hidden = (_a = module2.hiddenOn) == null ? void 0 : _a.includes(this.device());
     const card = grid.createDiv({ cls: "hb-module" });
     card.classList.add(`hb-span-${(_b = module2.span) != null ? _b : 1}`);
+    if ((_c = module2.style) == null ? void 0 : _c.background) card.style.background = module2.style.background;
+    if ((_d = module2.style) == null ? void 0 : _d.textColor) {
+      card.style.color = module2.style.textColor;
+      card.style.setProperty("--text-normal", module2.style.textColor);
+      card.style.setProperty("--text-muted", `color-mix(in srgb, ${module2.style.textColor}, transparent 28%)`);
+    }
+    if ((_e = module2.style) == null ? void 0 : _e.borderColor) card.style.borderColor = module2.style.borderColor;
+    if (((_f = module2.style) == null ? void 0 : _f.radius) !== void 0) card.style.borderRadius = `${module2.style.radius}px`;
+    card.classList.add(`hb-shadow-${(_h = (_g = module2.style) == null ? void 0 : _g.shadow) != null ? _h : "soft"}`);
+    card.classList.add(`hb-padding-${(_j = (_i = module2.style) == null ? void 0 : _i.padding) != null ? _j : "normal"}`);
     if (hidden) card.classList.add("hb-device-hidden");
     if (this.editing && this.device() !== "mobile") {
       card.draggable = true;
@@ -865,35 +877,35 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     }
     if (module2.kind === "shortcuts") {
       const shortcuts = body.createDiv({ cls: "hb-shortcuts" });
-      for (const item of (_c = module2.shortcuts) != null ? _c : []) {
+      for (const item of (_k = module2.shortcuts) != null ? _k : []) {
         const link = new import_obsidian.ButtonComponent(shortcuts).setButtonText(item.label).setClass("hb-shortcut");
         if (item.icon) link.setIcon(item.icon);
         const button = link.buttonEl;
         button.setAttribute("aria-label", `\u6253\u5F00 ${item.label}`);
         button.onclick = () => void this.openTarget(item.target);
       }
-      if (!((_d = module2.shortcuts) == null ? void 0 : _d.length)) body.createEl("p", { text: "\u70B9\u7F16\u8F91\u6A21\u5757\u6DFB\u52A0\u94FE\u63A5\u3002", cls: "hb-muted" });
+      if (!((_l = module2.shortcuts) == null ? void 0 : _l.length)) body.createEl("p", { text: "\u70B9\u7F16\u8F91\u6A21\u5757\u6DFB\u52A0\u94FE\u63A5\u3002", cls: "hb-muted" });
     } else if (module2.kind === "text") {
-      body.createEl("p", { text: (_e = module2.text) != null ? _e : "", cls: "hb-text" });
+      body.createEl("p", { text: (_m = module2.text) != null ? _m : "", cls: "hb-text" });
     } else if (module2.kind === "calendar") {
       this.renderCalendar(body, module2);
     } else if (module2.kind === "countdown") {
       this.renderCountdown(body, module2);
     } else if (module2.kind === "image") {
-      const path = (_g = (_f = module2.options) == null ? void 0 : _f.imagePath) != null ? _g : "";
+      const path = (_o = (_n = module2.options) == null ? void 0 : _n.imagePath) != null ? _o : "";
       if (path) {
-        const image = body.createEl("img", { cls: "hb-content-image", attr: { src: vaultImageUrl(this.app, path), alt: ((_h = module2.options) == null ? void 0 : _h.imageAlt) || module2.title, loading: "lazy" } });
-        image.classList.add(`hb-image-${(_j = (_i = module2.options) == null ? void 0 : _i.imageFit) != null ? _j : "cover"}`);
+        const image = body.createEl("img", { cls: "hb-content-image", attr: { src: vaultImageUrl(this.app, path), alt: ((_p = module2.options) == null ? void 0 : _p.imageAlt) || module2.title, loading: "lazy" } });
+        image.classList.add(`hb-image-${(_r = (_q = module2.options) == null ? void 0 : _q.imageFit) != null ? _r : "cover"}`);
       } else body.createEl("p", { text: "\u70B9\u7F16\u8F91\u6A21\u5757\u9009\u62E9\u56FE\u7247\u3002", cls: "hb-muted" });
     } else if (module2.kind === "weather") {
       const weather = body.createDiv({ cls: "hb-weather" });
-      weather.createEl("strong", { text: ((_k = module2.options) == null ? void 0 : _k.weatherTemperature) || "--\xB0" });
+      weather.createEl("strong", { text: ((_s = module2.options) == null ? void 0 : _s.weatherTemperature) || "--\xB0" });
       const description = weather.createDiv();
-      description.createEl("span", { text: ((_l = module2.options) == null ? void 0 : _l.weatherText) || "\u672A\u586B\u5199\u5929\u6C14" });
-      description.createEl("small", { text: ((_m = module2.options) == null ? void 0 : _m.weatherLocation) || "\u5F53\u524D\u4F4D\u7F6E" });
-      if ((_n = module2.options) == null ? void 0 : _n.weatherUpdatedAt) description.createEl("small", { text: `\u66F4\u65B0\u4E8E ${new Date(module2.options.weatherUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` });
-      if ((_o = module2.options) == null ? void 0 : _o.weatherError) description.createEl("small", { text: module2.options.weatherError, cls: "hb-weather-error" });
-      if (((_p = module2.options) == null ? void 0 : _p.weatherMode) === "auto") {
+      description.createEl("span", { text: ((_t = module2.options) == null ? void 0 : _t.weatherText) || "\u672A\u586B\u5199\u5929\u6C14" });
+      description.createEl("small", { text: ((_u = module2.options) == null ? void 0 : _u.weatherLocation) || "\u5F53\u524D\u4F4D\u7F6E" });
+      if ((_v = module2.options) == null ? void 0 : _v.weatherUpdatedAt) description.createEl("small", { text: `\u66F4\u65B0\u4E8E ${new Date(module2.options.weatherUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` });
+      if ((_w = module2.options) == null ? void 0 : _w.weatherError) description.createEl("small", { text: module2.options.weatherError, cls: "hb-weather-error" });
+      if (((_x = module2.options) == null ? void 0 : _x.weatherMode) === "auto") {
         const refresh = new import_obsidian.ButtonComponent(weather).setIcon("refresh-cw").setTooltip("\u5237\u65B0\u5929\u6C14");
         refresh.buttonEl.setAttribute("aria-label", "\u5237\u65B0\u5929\u6C14");
         refresh.onClick(() => void this.plugin.refreshWeather(module2, true));
@@ -902,24 +914,24 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     } else if (module2.kind === "bookshelf" || module2.kind === "assets" || module2.kind === "aiusage") {
       const markdown = module2.kind === "bookshelf" ? `\`\`\`dataview
 TABLE WITHOUT ID file.link AS \u4E66\u7C4D, reading-progress AS \u8FDB\u5EA6
-FROM "${((_q = module2.options) == null ? void 0 : _q.shelfPath) || "05_Books/epub-bookmarks"}"
+FROM "${((_y = module2.options) == null ? void 0 : _y.shelfPath) || "05_Books/epub-bookmarks"}"
 WHERE reading-progress
 SORT reading-progress DESC
 LIMIT 6
 \`\`\`` : module2.kind === "assets" ? `\`\`\`dataview
 TABLE WITHOUT ID file.link AS \u8D44\u4EA7, expire AS \u5230\u671F\u65E5
-FROM "${((_r = module2.options) == null ? void 0 : _r.assetPath) || "09_\u6570\u5B57\u8D44\u4EA7/\u8D44\u4EA7"}"
+FROM "${((_z = module2.options) == null ? void 0 : _z.assetPath) || "09_\u6570\u5B57\u8D44\u4EA7/\u8D44\u4EA7"}"
 SORT expire ASC
 LIMIT 6
 \`\`\`` : `\`\`\`dataview
 TABLE WITHOUT ID balance AS \u4F59\u989D, totalUsed AS \u7D2F\u8BA1\u6D88\u8017, updated AS \u540C\u6B65\u65F6\u95F4
-FROM "${((_s = module2.options) == null ? void 0 : _s.usagePath) || "03_\u751F\u6D3B\u8BB0\u5F55/05_AI\u7528\u91CF"}"
+FROM "${((_A = module2.options) == null ? void 0 : _A.usagePath) || "03_\u751F\u6D3B\u8BB0\u5F55/05_AI\u7528\u91CF"}"
 LIMIT 1
 \`\`\``;
       await import_obsidian.MarkdownRenderer.render(this.app, markdown, body, this.plugin.config.configPath, this);
     } else {
       try {
-        await import_obsidian.MarkdownRenderer.render(this.app, (_t = module2.markdown) != null ? _t : "", body, this.plugin.config.configPath, this);
+        await import_obsidian.MarkdownRenderer.render(this.app, (_B = module2.markdown) != null ? _B : "", body, this.plugin.config.configPath, this);
       } catch (error) {
         body.createEl("pre", { text: `\u67E5\u8BE2\u6E32\u67D3\u5931\u8D25\uFF1A${String(error)}`, cls: "hb-error" });
       }
@@ -942,7 +954,7 @@ LIMIT 1
     result.createEl("small", { text: ((_b = module2.options) == null ? void 0 : _b.label) || target });
   }
   renderCalendar(body, module2) {
-    var _a, _b;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     const offset = (_a = this.calendarOffsets.get(module2.id)) != null ? _a : 0;
     const shown = /* @__PURE__ */ new Date();
     shown.setDate(1);
@@ -960,16 +972,24 @@ LIMIT 1
       await this.render();
     });
     const days = body.createDiv({ cls: "hb-calendar" });
-    for (const label of ["\u65E5", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D"]) days.createEl("span", { text: label, cls: "hb-calendar-weekday" });
-    for (let empty = 0; empty < shown.getDay(); empty++) days.createEl("span", { cls: "hb-calendar-empty" });
+    const calendarStyle = (_c = (_b = module2.options) == null ? void 0 : _b.calendarStyle) != null ? _c : "minimal";
+    const weekStart = (_e = (_d = module2.options) == null ? void 0 : _d.calendarWeekStart) != null ? _e : 0;
+    const dayShape = (_g = (_f = module2.options) == null ? void 0 : _f.calendarDayShape) != null ? _g : "rounded";
+    days.classList.add(`hb-calendar-${calendarStyle}`, `hb-calendar-shape-${dayShape}`);
+    days.style.setProperty("--hb-calendar-accent", ((_h = module2.options) == null ? void 0 : _h.calendarAccent) || "var(--hb-accent)");
+    const weekLabels = weekStart === 1 ? ["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u65E5"] : ["\u65E5", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D"];
+    for (const label of weekLabels) days.createEl("span", { text: label, cls: "hb-calendar-weekday" });
+    const leadingEmpty = (shown.getDay() - weekStart + 7) % 7;
+    for (let empty = 0; empty < leadingEmpty; empty++) days.createEl("span", { cls: "hb-calendar-empty" });
     const total = new Date(shown.getFullYear(), shown.getMonth() + 1, 0).getDate();
     const today = /* @__PURE__ */ new Date();
     for (let day = 1; day <= total; day++) {
       const date = new Date(shown.getFullYear(), shown.getMonth(), day);
-      const path = `${((_b = module2.options) == null ? void 0 : _b.dailyFolder) || "02_\u65E5\u5386/\u6BCF\u65E5"}/${date.toISOString().slice(0, 10)}`;
+      const path = `${((_i = module2.options) == null ? void 0 : _i.dailyFolder) || "02_\u65E5\u5386/\u6BCF\u65E5"}/${date.toISOString().slice(0, 10)}`;
       const button = days.createEl("button", { text: String(day), cls: "hb-calendar-day" });
       button.setAttribute("aria-label", `\u6253\u5F00 ${path}`);
       if (date.toDateString() === today.toDateString()) button.addClass("is-today");
+      if (date.getDay() === 0 || date.getDay() === 6) button.addClass("is-weekend");
       button.onclick = () => void this.app.workspace.openLinkText(path, this.plugin.config.configPath, true);
     }
   }
@@ -1004,7 +1024,7 @@ var ModuleModal = class extends import_obsidian.Modal {
     this.onSave = onSave;
   }
   onOpen() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q;
     const { contentEl } = this;
     contentEl.addClass("hb-modal");
     contentEl.createEl("h2", { text: "\u7F16\u8F91\u6A21\u5757" });
@@ -1129,6 +1149,22 @@ var ModuleModal = class extends import_obsidian.Modal {
         return text.setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.dailyFolder) != null ? _b2 : "02_\u65E5\u5386/\u6BCF\u65E5").onChange((value) => this.module.options.dailyFolder = value.trim());
       });
       new import_obsidian.Setting(contentEl).setName("\u9009\u62E9\u76EE\u5F55").addButton((button) => button.setButtonText("\u6D4F\u89C8\u5E93\u5185\u6587\u4EF6\u5939").onClick(() => new VaultPickerModal(this.appRef, "\u9009\u62E9\u6BCF\u65E5\u7B14\u8BB0\u76EE\u5F55", "folder", (path) => this.module.options.dailyFolder = path).open()));
+      new import_obsidian.Setting(contentEl).setName("\u65E5\u5386\u6837\u5F0F").addDropdown((drop) => {
+        var _a2, _b2;
+        return drop.addOption("minimal", "\u6781\u7B80").addOption("boxed", "\u65E5\u671F\u65B9\u683C").addOption("compact", "\u7D27\u51D1").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.calendarStyle) != null ? _b2 : "minimal").onChange((value) => this.module.options.calendarStyle = value);
+      });
+      new import_obsidian.Setting(contentEl).setName("\u4E00\u5468\u5F00\u59CB\u65E5").addDropdown((drop) => {
+        var _a2, _b2;
+        return drop.addOption("0", "\u5468\u65E5").addOption("1", "\u5468\u4E00").setValue(String((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.calendarWeekStart) != null ? _b2 : 0)).onChange((value) => this.module.options.calendarWeekStart = Number(value));
+      });
+      new import_obsidian.Setting(contentEl).setName("\u4ECA\u65E5\u989C\u8272").addColorPicker((color) => {
+        var _a2, _b2;
+        return color.setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.calendarAccent) != null ? _b2 : "#7c3aed").onChange((value) => this.module.options.calendarAccent = value);
+      });
+      new import_obsidian.Setting(contentEl).setName("\u65E5\u671F\u5F62\u72B6").addDropdown((drop) => {
+        var _a2, _b2;
+        return drop.addOption("rounded", "\u5706\u89D2\u65B9\u5757").addOption("circle", "\u5706\u5F62").addOption("square", "\u76F4\u89D2\u65B9\u5757").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.calendarDayShape) != null ? _b2 : "rounded").onChange((value) => this.module.options.calendarDayShape = value);
+      });
     } else if (this.module.kind === "countdown") {
       (_i = (_h = this.module).options) != null ? _i : _h.options = {};
       new import_obsidian.Setting(contentEl).setName("\u8BF4\u660E").addText((text) => {
@@ -1198,6 +1234,38 @@ var ModuleModal = class extends import_obsidian.Modal {
         return text.setPlaceholder("25\xB0").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.weatherTemperature) != null ? _b2 : "").onChange((value) => this.module.options.weatherTemperature = value);
       });
     }
+    (_q = (_p = this.module).style) != null ? _q : _p.style = {};
+    contentEl.createEl("h3", { text: "\u6A21\u5757\u5916\u89C2" });
+    new import_obsidian.Setting(contentEl).setName("\u80CC\u666F\u8272").setDesc("\u4EC5\u4FEE\u6539\u5F53\u524D\u6A21\u5757\u3002").addColorPicker((color) => {
+      var _a2, _b2;
+      return color.setValue((_b2 = (_a2 = this.module.style) == null ? void 0 : _a2.background) != null ? _b2 : "#242134").onChange((value) => this.module.style.background = value);
+    }).addButton((button) => button.setButtonText("\u8DDF\u968F\u4E3B\u9898").onClick(() => {
+      delete this.module.style.background;
+    }));
+    new import_obsidian.Setting(contentEl).setName("\u6587\u5B57\u989C\u8272").addColorPicker((color) => {
+      var _a2, _b2;
+      return color.setValue((_b2 = (_a2 = this.module.style) == null ? void 0 : _a2.textColor) != null ? _b2 : "#ffffff").onChange((value) => this.module.style.textColor = value);
+    }).addButton((button) => button.setButtonText("\u8DDF\u968F\u4E3B\u9898").onClick(() => {
+      delete this.module.style.textColor;
+    }));
+    new import_obsidian.Setting(contentEl).setName("\u8FB9\u6846\u989C\u8272").addColorPicker((color) => {
+      var _a2, _b2;
+      return color.setValue((_b2 = (_a2 = this.module.style) == null ? void 0 : _a2.borderColor) != null ? _b2 : "#4b465f").onChange((value) => this.module.style.borderColor = value);
+    }).addButton((button) => button.setButtonText("\u8DDF\u968F\u4E3B\u9898").onClick(() => {
+      delete this.module.style.borderColor;
+    }));
+    new import_obsidian.Setting(contentEl).setName("\u5706\u89D2").addSlider((slider) => {
+      var _a2, _b2;
+      return slider.setLimits(0, 28, 2).setValue((_b2 = (_a2 = this.module.style) == null ? void 0 : _a2.radius) != null ? _b2 : 16).setDynamicTooltip().onChange((value) => this.module.style.radius = value);
+    });
+    new import_obsidian.Setting(contentEl).setName("\u9634\u5F71").addDropdown((drop) => {
+      var _a2, _b2;
+      return drop.addOption("none", "\u65E0").addOption("soft", "\u67D4\u548C").addOption("strong", "\u660E\u663E").setValue((_b2 = (_a2 = this.module.style) == null ? void 0 : _a2.shadow) != null ? _b2 : "soft").onChange((value) => this.module.style.shadow = value);
+    });
+    new import_obsidian.Setting(contentEl).setName("\u5185\u8FB9\u8DDD").addDropdown((drop) => {
+      var _a2, _b2;
+      return drop.addOption("compact", "\u7D27\u51D1").addOption("normal", "\u6807\u51C6").addOption("comfortable", "\u5BBD\u677E").setValue((_b2 = (_a2 = this.module.style) == null ? void 0 : _a2.padding) != null ? _b2 : "normal").onChange((value) => this.module.style.padding = value);
+    });
     const actions = contentEl.createDiv({ cls: "modal-button-container" });
     new import_obsidian.ButtonComponent(actions).setButtonText("\u53D6\u6D88").onClick(() => this.close());
     new import_obsidian.ButtonComponent(actions).setButtonText("\u4FDD\u5B58").setCta().onClick(async () => {
@@ -1217,9 +1285,18 @@ var ThemeModal = class extends import_obsidian.Modal {
     contentEl.addClass("hb-modal");
     contentEl.createEl("h2", { text: "\u4E3B\u9875\u5916\u89C2" });
     new import_obsidian.Setting(contentEl).setName("\u80CC\u666F\u7C7B\u578B").addDropdown((drop) => drop.addOption("none", "\u8DDF\u968F Obsidian").addOption("color", "\u7EAF\u8272").addOption("gradient", "\u6E10\u53D8").addOption("image", "\u56FE\u7247\uFF08\u5E93\u5185\u6216 URL\uFF09").setValue(this.plugin.config.theme.backgroundType).onChange((value) => this.plugin.config.theme.backgroundType = value));
+    new import_obsidian.Setting(contentEl).setName("\u7EAF\u8272\u80CC\u666F").setDesc("\u9009\u8272\u540E\u4F1A\u81EA\u52A8\u5207\u6362\u4E3A\u7EAF\u8272\u80CC\u666F\u3002").addColorPicker((color) => color.setValue(/^#[0-9a-f]{6}$/i.test(this.plugin.config.theme.backgroundValue) ? this.plugin.config.theme.backgroundValue : "#1e1e2e").onChange((value) => {
+      this.plugin.config.theme.backgroundType = "color";
+      this.plugin.config.theme.backgroundValue = value;
+    }));
+    new import_obsidian.Setting(contentEl).setName("\u6E10\u53D8\u9884\u8BBE").addDropdown((drop) => drop.addOption("", "\u4E0D\u4F7F\u7528\u9884\u8BBE").addOption("linear-gradient(145deg, #171426, #2b1f47)", "\u6DF1\u7D2B\u591C\u8272").addOption("linear-gradient(145deg, #12212b, #193b3a)", "\u58A8\u7EFF\u68EE\u6797").addOption("linear-gradient(145deg, #f4ece1, #e8d7c2)", "\u6696\u8272\u7EB8\u5F20").addOption("linear-gradient(145deg, #182235, #273c5a)", "\u6DF1\u84DD\u96FE\u9762").setValue("").onChange((value) => {
+      if (!value) return;
+      this.plugin.config.theme.backgroundType = "gradient";
+      this.plugin.config.theme.backgroundValue = value;
+    }));
     new import_obsidian.Setting(contentEl).setName("\u80CC\u666F\u503C").setDesc("\u7EAF\u8272\u586B #1e1e2e\uFF1B\u6E10\u53D8\u586B linear-gradient(...)\uFF1B\u56FE\u7247\u53EF\u586B\u5E93\u5185\u8DEF\u5F84\u6216 URL\u3002").addText((text) => text.setValue(this.plugin.config.theme.backgroundValue).onChange((value) => this.plugin.config.theme.backgroundValue = value));
     new import_obsidian.Setting(contentEl).setName("\u9009\u62E9\u5E93\u5185\u80CC\u666F\u56FE").addButton((button) => button.setButtonText("\u9009\u62E9\u56FE\u7247").onClick(() => new VaultPickerModal(this.appRef, "\u9009\u62E9\u80CC\u666F\u56FE", "image", (path) => this.plugin.config.theme.backgroundValue = path).open()));
-    new import_obsidian.Setting(contentEl).setName("\u5F3A\u8C03\u8272").addText((text) => text.setValue(this.plugin.config.theme.accent).onChange((value) => this.plugin.config.theme.accent = value));
+    new import_obsidian.Setting(contentEl).setName("\u5F3A\u8C03\u8272").addColorPicker((color) => color.setValue(this.plugin.config.theme.accent).onChange((value) => this.plugin.config.theme.accent = value));
     new import_obsidian.Setting(contentEl).setName("\u5361\u7247\u4E0D\u900F\u660E\u5EA6").addSlider((slider) => slider.setLimits(0.45, 1, 0.05).setValue(this.plugin.config.theme.cardOpacity).setDynamicTooltip().onChange((value) => this.plugin.config.theme.cardOpacity = value));
     const actions = contentEl.createDiv({ cls: "modal-button-container" });
     new import_obsidian.ButtonComponent(actions).setButtonText("\u53D6\u6D88").onClick(() => this.close());
