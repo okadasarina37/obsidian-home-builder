@@ -6,6 +6,7 @@ import {
   MarkdownRenderer,
   Modal,
   Notice,
+  Platform,
   Plugin,
   PluginSettingTab,
   requestUrl,
@@ -19,7 +20,7 @@ import {
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-const PLUGIN_VERSION = "0.4.3";
+const PLUGIN_VERSION = "0.4.4";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
@@ -122,6 +123,7 @@ interface HomeConfig {
     openOnStartup: boolean;
     startupPageId: string;
     gridColumns: 2 | 3 | 4;
+    tabletGridColumns: "auto" | 2 | 3;
   };
   history?: Array<{ at: string; reason: string; data: string }>;
   layouts: Record<Device, Layout>;
@@ -299,7 +301,7 @@ function defaultConfig(): HomeConfig {
     savedPages: [],
     theme: { backgroundType: "none", backgroundValue: "", accent: "#7c3aed", cardOpacity: 0.88 },
     banner: { enabled: false, imagePath: "", title: "", subtitle: "", alt: "主页横幅图片", height: 220, overlay: .42, rounded: true },
-    settings: { openOnStartup: false, startupPageId: "", gridColumns: 2 },
+    settings: { openOnStartup: false, startupPageId: "", gridColumns: 2, tabletGridColumns: "auto" },
     history: [],
     layouts: {
       mobile: { modules: starterModules() },
@@ -369,6 +371,7 @@ export default class HomeBuilderPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
     this.registerEvent(this.app.vault.on("delete", () => this.scheduleRefresh()));
     this.registerEvent(this.app.vault.on("rename", () => this.scheduleRefresh()));
+    this.registerDomEvent(window, "resize", () => this.scheduleRefresh());
     this.app.workspace.onLayoutReady(() => {
       if (this.config.settings.openOnStartup) void this.openConfiguredStartupPage();
     });
@@ -447,7 +450,9 @@ export default class HomeBuilderPlugin extends Plugin {
 
   getDevice(): Device {
     const width = window.innerWidth;
-    if (width < 768) return "mobile";
+    const shortestSide = Math.min(window.innerWidth, window.innerHeight);
+    if (shortestSide < 600 || width < 768) return "mobile";
+    if (Platform.isMobileApp) return "tablet";
     if (width < 1024) return "tablet";
     return "desktop";
   }
@@ -664,6 +669,15 @@ class HomeBuilderView extends ItemView {
 
   private device() { return this.selectedDevice ?? this.plugin.getDevice(); }
 
+  private gridColumns(device = this.device()): number {
+    if (device === "mobile") return 1;
+    if (device === "desktop") return this.plugin.config.settings.gridColumns;
+    const tabletSetting = this.plugin.config.settings.tabletGridColumns ?? "auto";
+    if (tabletSetting !== "auto") return tabletSetting;
+    const availableWidth = this.contentEl.clientWidth || window.innerWidth;
+    return availableWidth >= 900 ? 3 : 2;
+  }
+
   async render() {
     this.renderStage = "清空旧页面";
     const { contentEl } = this;
@@ -673,7 +687,10 @@ class HomeBuilderView extends ItemView {
     const theme = this.plugin.config.theme;
     contentEl.style.setProperty("--hb-accent", theme.accent);
     contentEl.style.setProperty("--hb-card-opacity", String(theme.cardOpacity));
-    contentEl.style.setProperty("--hb-columns", String(this.plugin.config.settings.gridColumns));
+    const gridColumns = this.gridColumns();
+    contentEl.style.setProperty("--hb-columns", String(gridColumns));
+    contentEl.classList.remove("hb-columns-1", "hb-columns-2", "hb-columns-3", "hb-columns-4");
+    contentEl.classList.add(`hb-columns-${gridColumns}`);
     contentEl.classList.remove("hb-bg-color", "hb-bg-image", "hb-bg-gradient");
     contentEl.style.background = "";
     contentEl.style.backgroundImage = "";
@@ -933,7 +950,7 @@ class HomeBuilderView extends ItemView {
         await this.plugin.saveConfig();
       }).open();
       const resize = async () => {
-        const max = this.device() === "mobile" ? 1 : this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
+        const max = this.gridColumns();
         module.span = ((module.span ?? 1) % max + 1) as Span;
         await this.plugin.saveConfig("调整模块宽度");
       };
@@ -969,7 +986,7 @@ class HomeBuilderView extends ItemView {
           return button;
         };
         const index = layout.modules.indexOf(module);
-        const columns = this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
+        const columns = this.gridColumns();
         action("pencil", "编辑").onClick(() => this.openModuleEditor(module));
         action("copy", "复制").onClick(duplicate);
         action("arrow-left", "左移一格").setDisabled(index === 0).onClick(() => this.move(layout, module, -1));
@@ -1543,7 +1560,9 @@ class HomeBuilderSettings extends PluginSettingTab {
       .addText((text) => text.setValue(this.plugin.config.configPath).onChange((value) => this.plugin.config.configPath = value.trim() || DEFAULT_CONFIG_PATH));
     new Setting(containerEl).setName("布局模式").setDesc("独立：三端分别编辑；共享：统一响应式；混合：可为设备保留覆写。")
       .addDropdown((drop) => drop.addOption("independent", "独立布局").addOption("shared", "共享响应式布局").addOption("hybrid", "混合布局").setValue(this.plugin.config.layoutMode).onChange((value) => this.plugin.config.layoutMode = value as LayoutMode));
-    new Setting(containerEl).setName("桌面网格列数").setDesc("手机始终单列，Pad 固定双列；电脑可选 2、3 或 4 列。")
+    new Setting(containerEl).setName("Pad 网格列数").setDesc("自动模式会按主页可用宽度切换：较窄双列，大屏或横屏三列。")
+      .addDropdown((drop) => drop.addOption("auto", "自动（2 / 3 列）").addOption("2", "固定 2 列").addOption("3", "固定 3 列").setValue(String(this.plugin.config.settings.tabletGridColumns ?? "auto")).onChange((value) => this.plugin.config.settings.tabletGridColumns = value === "auto" ? "auto" : Number(value) as 2 | 3));
+    new Setting(containerEl).setName("桌面网格列数").setDesc("手机始终单列；电脑可选 2、3 或 4 列。")
       .addDropdown((drop) => drop.addOption("2", "2 列").addOption("3", "3 列").addOption("4", "4 列").setValue(String(this.plugin.config.settings.gridColumns)).onChange((value) => this.plugin.config.settings.gridColumns = Number(value) as 2 | 3 | 4));
     new Setting(containerEl).setName("启动时打开 Home Builder").setDesc("可选。开启后会在 Obsidian 布局就绪时打开指定主页；不会修改 Homepage 插件的配置。")
       .addToggle((toggle) => toggle.setValue(this.plugin.config.settings.openOnStartup).onChange((value) => this.plugin.config.settings.openOnStartup = value));

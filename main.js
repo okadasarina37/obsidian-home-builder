@@ -26,7 +26,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-var PLUGIN_VERSION = "0.4.3";
+var PLUGIN_VERSION = "0.4.4";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
@@ -212,7 +212,7 @@ function defaultConfig() {
     savedPages: [],
     theme: { backgroundType: "none", backgroundValue: "", accent: "#7c3aed", cardOpacity: 0.88 },
     banner: { enabled: false, imagePath: "", title: "", subtitle: "", alt: "\u4E3B\u9875\u6A2A\u5E45\u56FE\u7247", height: 220, overlay: 0.42, rounded: true },
-    settings: { openOnStartup: false, startupPageId: "", gridColumns: 2 },
+    settings: { openOnStartup: false, startupPageId: "", gridColumns: 2, tabletGridColumns: "auto" },
     history: [],
     layouts: {
       mobile: { modules: starterModules() },
@@ -290,6 +290,7 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
     this.registerEvent(this.app.vault.on("delete", () => this.scheduleRefresh()));
     this.registerEvent(this.app.vault.on("rename", () => this.scheduleRefresh()));
+    this.registerDomEvent(window, "resize", () => this.scheduleRefresh());
     this.app.workspace.onLayoutReady(() => {
       if (this.config.settings.openOnStartup) void this.openConfiguredStartupPage();
     });
@@ -363,7 +364,9 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
   }
   getDevice() {
     const width = window.innerWidth;
-    if (width < 768) return "mobile";
+    const shortestSide = Math.min(window.innerWidth, window.innerHeight);
+    if (shortestSide < 600 || width < 768) return "mobile";
+    if (import_obsidian.Platform.isMobileApp) return "tablet";
     if (width < 1024) return "tablet";
     return "desktop";
   }
@@ -576,6 +579,15 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     var _a;
     return (_a = this.selectedDevice) != null ? _a : this.plugin.getDevice();
   }
+  gridColumns(device = this.device()) {
+    var _a;
+    if (device === "mobile") return 1;
+    if (device === "desktop") return this.plugin.config.settings.gridColumns;
+    const tabletSetting = (_a = this.plugin.config.settings.tabletGridColumns) != null ? _a : "auto";
+    if (tabletSetting !== "auto") return tabletSetting;
+    const availableWidth = this.contentEl.clientWidth || window.innerWidth;
+    return availableWidth >= 900 ? 3 : 2;
+  }
   async render() {
     var _a, _b;
     this.renderStage = "\u6E05\u7A7A\u65E7\u9875\u9762";
@@ -586,7 +598,10 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     const theme = this.plugin.config.theme;
     contentEl.style.setProperty("--hb-accent", theme.accent);
     contentEl.style.setProperty("--hb-card-opacity", String(theme.cardOpacity));
-    contentEl.style.setProperty("--hb-columns", String(this.plugin.config.settings.gridColumns));
+    const gridColumns = this.gridColumns();
+    contentEl.style.setProperty("--hb-columns", String(gridColumns));
+    contentEl.classList.remove("hb-columns-1", "hb-columns-2", "hb-columns-3", "hb-columns-4");
+    contentEl.classList.add(`hb-columns-${gridColumns}`);
     contentEl.classList.remove("hb-bg-color", "hb-bg-image", "hb-bg-gradient");
     contentEl.style.background = "";
     contentEl.style.backgroundImage = "";
@@ -849,7 +864,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
       }).open();
       const resize = async () => {
         var _a2;
-        const max = this.device() === "mobile" ? 1 : this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
+        const max = this.gridColumns();
         module2.span = ((_a2 = module2.span) != null ? _a2 : 1) % max + 1;
         await this.plugin.saveConfig("\u8C03\u6574\u6A21\u5757\u5BBD\u5EA6");
       };
@@ -886,7 +901,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
           return button;
         };
         const index = layout.modules.indexOf(module2);
-        const columns = this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
+        const columns = this.gridColumns();
         action("pencil", "\u7F16\u8F91").onClick(() => this.openModuleEditor(module2));
         action("copy", "\u590D\u5236").onClick(duplicate);
         action("arrow-left", "\u5DE6\u79FB\u4E00\u683C").setDisabled(index === 0).onClick(() => this.move(layout, module2, -1));
@@ -1595,7 +1610,11 @@ var HomeBuilderSettings = class extends import_obsidian.PluginSettingTab {
     containerEl.createEl("h2", { text: "Home Builder \u8BBE\u7F6E" });
     new import_obsidian.Setting(containerEl).setName("\u914D\u7F6E\u6587\u4EF6\u8DEF\u5F84").setDesc("\u8BE5 JSON \u4F4D\u4E8E\u5E93\u5185\uFF0C\u53EF\u88AB Obsidian \u540C\u6B65\u65B9\u6848\u540C\u6B65\u3002\u4FEE\u6539\u540E\u4FDD\u5B58\u5373\u4F1A\u8FC1\u79FB\u5230\u65B0\u8DEF\u5F84\u3002").addText((text) => text.setValue(this.plugin.config.configPath).onChange((value) => this.plugin.config.configPath = value.trim() || DEFAULT_CONFIG_PATH));
     new import_obsidian.Setting(containerEl).setName("\u5E03\u5C40\u6A21\u5F0F").setDesc("\u72EC\u7ACB\uFF1A\u4E09\u7AEF\u5206\u522B\u7F16\u8F91\uFF1B\u5171\u4EAB\uFF1A\u7EDF\u4E00\u54CD\u5E94\u5F0F\uFF1B\u6DF7\u5408\uFF1A\u53EF\u4E3A\u8BBE\u5907\u4FDD\u7559\u8986\u5199\u3002").addDropdown((drop) => drop.addOption("independent", "\u72EC\u7ACB\u5E03\u5C40").addOption("shared", "\u5171\u4EAB\u54CD\u5E94\u5F0F\u5E03\u5C40").addOption("hybrid", "\u6DF7\u5408\u5E03\u5C40").setValue(this.plugin.config.layoutMode).onChange((value) => this.plugin.config.layoutMode = value));
-    new import_obsidian.Setting(containerEl).setName("\u684C\u9762\u7F51\u683C\u5217\u6570").setDesc("\u624B\u673A\u59CB\u7EC8\u5355\u5217\uFF0CPad \u56FA\u5B9A\u53CC\u5217\uFF1B\u7535\u8111\u53EF\u9009 2\u30013 \u6216 4 \u5217\u3002").addDropdown((drop) => drop.addOption("2", "2 \u5217").addOption("3", "3 \u5217").addOption("4", "4 \u5217").setValue(String(this.plugin.config.settings.gridColumns)).onChange((value) => this.plugin.config.settings.gridColumns = Number(value)));
+    new import_obsidian.Setting(containerEl).setName("Pad \u7F51\u683C\u5217\u6570").setDesc("\u81EA\u52A8\u6A21\u5F0F\u4F1A\u6309\u4E3B\u9875\u53EF\u7528\u5BBD\u5EA6\u5207\u6362\uFF1A\u8F83\u7A84\u53CC\u5217\uFF0C\u5927\u5C4F\u6216\u6A2A\u5C4F\u4E09\u5217\u3002").addDropdown((drop) => {
+      var _a;
+      return drop.addOption("auto", "\u81EA\u52A8\uFF082 / 3 \u5217\uFF09").addOption("2", "\u56FA\u5B9A 2 \u5217").addOption("3", "\u56FA\u5B9A 3 \u5217").setValue(String((_a = this.plugin.config.settings.tabletGridColumns) != null ? _a : "auto")).onChange((value) => this.plugin.config.settings.tabletGridColumns = value === "auto" ? "auto" : Number(value));
+    });
+    new import_obsidian.Setting(containerEl).setName("\u684C\u9762\u7F51\u683C\u5217\u6570").setDesc("\u624B\u673A\u59CB\u7EC8\u5355\u5217\uFF1B\u7535\u8111\u53EF\u9009 2\u30013 \u6216 4 \u5217\u3002").addDropdown((drop) => drop.addOption("2", "2 \u5217").addOption("3", "3 \u5217").addOption("4", "4 \u5217").setValue(String(this.plugin.config.settings.gridColumns)).onChange((value) => this.plugin.config.settings.gridColumns = Number(value)));
     new import_obsidian.Setting(containerEl).setName("\u542F\u52A8\u65F6\u6253\u5F00 Home Builder").setDesc("\u53EF\u9009\u3002\u5F00\u542F\u540E\u4F1A\u5728 Obsidian \u5E03\u5C40\u5C31\u7EEA\u65F6\u6253\u5F00\u6307\u5B9A\u4E3B\u9875\uFF1B\u4E0D\u4F1A\u4FEE\u6539 Homepage \u63D2\u4EF6\u7684\u914D\u7F6E\u3002").addToggle((toggle) => toggle.setValue(this.plugin.config.settings.openOnStartup).onChange((value) => this.plugin.config.settings.openOnStartup = value));
     new import_obsidian.Setting(containerEl).setName("\u542F\u52A8\u4E3B\u9875").setDesc("\u4EC5\u5728\u5F00\u542F\u542F\u52A8\u4E3B\u9875\u540E\u751F\u6548\u3002").addDropdown((drop) => {
       drop.addOption("", "\u5F53\u524D\u4E3B\u9875");

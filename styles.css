@@ -44,6 +44,8 @@
 .hb-span-2 { grid-column: span 2; }
 .hb-span-3 { grid-column: span 3; }
 .hb-span-4 { grid-column: span 4; }
+.hb-columns-2 .hb-span-3, .hb-columns-2 .hb-span-4 { grid-column: span 2; }
+.hb-columns-3 .hb-span-4 { grid-column: span 3; }
 .hb-device-hidden { opacity: .52; outline: 2px dashed var(--text-muted); outline-offset: -4px; }
 .hb-module-title { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .hb-module-title h2 { margin: 0; font-size: 1.05rem; line-height: 1.35; }
@@ -166,8 +168,7 @@
 }
 
 @media (min-width: 768px) and (max-width: 1023px) {
-  .hb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .hb-span-3, .hb-span-4 { grid-column: span 2; }
+  .hb-grid { grid-template-columns: repeat(var(--hb-columns, 2), minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) { .hb-shortcut { transition: none; } }
