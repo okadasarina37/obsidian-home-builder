@@ -668,7 +668,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     const grid = this.contentEl.querySelector(".hb-grid");
     if (grid) {
       (_a = grid.querySelector(".hb-empty")) == null ? void 0 : _a.remove();
-      await this.renderModule(grid, created, layout);
+      this.renderInsertedModule(grid, created, layout);
     } else {
       await this.render();
     }
@@ -678,6 +678,54 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     } catch (error) {
       new import_obsidian.Notice(`\u201C${label}\u201D\u5DF2\u663E\u793A\uFF0C\u4F46\u6682\u672A\u4FDD\u5B58\uFF1A${String(error)}`, 1e4);
     }
+  }
+  /**
+   * iOS-safe insertion path.  It intentionally uses native buttons instead
+   * of Obsidian ButtonComponent, which is the only part of the normal card
+   * renderer that can fail while a modal is closing on mobile WebKit.
+   */
+  renderInsertedModule(grid, module2, layout) {
+    const card = grid.createDiv({ cls: "hb-module hb-span-1" });
+    const title = card.createEl("h2", { text: module2.title || "\u672A\u547D\u540D\u6A21\u5757" });
+    title.addClass("hb-inserted-module-title");
+    const controls = card.createDiv({ cls: "hb-module-controls" });
+    const addButton = (text, handler, danger = false) => {
+      const button = controls.createEl("button", { text, attr: { type: "button", "aria-label": text } });
+      if (danger) button.addClass("mod-warning");
+      button.onclick = () => void handler();
+      return button;
+    };
+    const persist = async () => {
+      try {
+        await this.plugin.saveConfig("\u7F16\u8F91\u6A21\u5757", false);
+      } catch (error) {
+        new import_obsidian.Notice(`\u6A21\u5757\u5DF2\u4FEE\u6539\uFF0C\u4F46\u6682\u672A\u4FDD\u5B58\uFF1A${String(error)}`, 1e4);
+      }
+    };
+    addButton("\u7F16\u8F91", () => this.openModuleEditor(module2));
+    addButton("\u4E0A\u79FB", async () => {
+      var _a;
+      const index = layout.modules.indexOf(module2);
+      if (index <= 0) return;
+      [layout.modules[index - 1], layout.modules[index]] = [layout.modules[index], layout.modules[index - 1]];
+      (_a = card.previousElementSibling) == null ? void 0 : _a.before(card);
+      await persist();
+    });
+    addButton("\u4E0B\u79FB", async () => {
+      var _a;
+      const index = layout.modules.indexOf(module2);
+      if (index < 0 || index >= layout.modules.length - 1) return;
+      [layout.modules[index], layout.modules[index + 1]] = [layout.modules[index + 1], layout.modules[index]];
+      (_a = card.nextElementSibling) == null ? void 0 : _a.after(card);
+      await persist();
+    });
+    addButton("\u5220\u9664", async () => {
+      const index = layout.modules.indexOf(module2);
+      if (index >= 0) layout.modules.splice(index, 1);
+      card.remove();
+      await persist();
+    }, true);
+    card.createEl("p", { text: "\u6A21\u5757\u5DF2\u6DFB\u52A0\u3002\u53EF\u76F4\u63A5\u4F7F\u7528\u4E0A\u65B9\u6309\u94AE\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\uFF1B\u5B8C\u6210\u7F16\u8F91\u540E\u9884\u89C8\u5185\u5BB9\u3002", cls: "hb-muted" });
   }
   async renderModule(grid, module2, layout) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;
