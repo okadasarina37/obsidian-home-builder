@@ -86,13 +86,30 @@
 .hb-calendar-day:hover, .hb-calendar-day:focus-visible { background: var(--background-modifier-hover); outline: 2px solid var(--hb-accent); }
 .hb-calendar-day.is-today { color: var(--text-on-accent); background: var(--hb-calendar-accent, var(--hb-accent)); }
 .hb-calendar-day.is-weekend:not(.is-today) { color: color-mix(in srgb, var(--hb-calendar-accent, var(--hb-accent)), var(--text-normal) 45%); }
-.hb-calendar-boxed .hb-calendar-day { border: 1px solid var(--background-modifier-border); background: color-mix(in srgb, var(--background-secondary), transparent 18%); }
-.hb-calendar-boxed .hb-calendar-day.is-today { background: var(--hb-calendar-accent, var(--hb-accent)); }
+.hb-calendar-minimal .hb-calendar-day,
+.hb-calendar-minimal .hb-calendar-day:hover,
+.hb-calendar-minimal .hb-calendar-day:focus-visible,
+.hb-calendar-compact .hb-calendar-day,
+.hb-calendar-compact .hb-calendar-day:hover,
+.hb-calendar-compact .hb-calendar-day:focus-visible {
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.hb-calendar-minimal .hb-calendar-day.is-today,
+.hb-calendar-compact .hb-calendar-day.is-today {
+  color: var(--hb-calendar-accent, var(--hb-accent)) !important;
+  background: transparent !important;
+  font-weight: 800;
+}
+.hb-calendar-boxed .hb-calendar-day { border: 1px solid var(--background-modifier-border) !important; background: color-mix(in srgb, var(--background-secondary), transparent 18%) !important; }
+.hb-calendar-boxed .hb-calendar-day.is-today { color: var(--text-on-accent) !important; background: var(--hb-calendar-accent, var(--hb-accent)) !important; }
 .hb-calendar-compact { gap: 2px; }
 .hb-calendar-compact .hb-calendar-day { min-height: 30px; padding: 2px; font-size: .82rem; }
-.hb-calendar-shape-circle .hb-calendar-day { border-radius: 999px; aspect-ratio: 1; }
-.hb-calendar-shape-square .hb-calendar-day { border-radius: 0; }
-.hb-calendar-shape-rounded .hb-calendar-day { border-radius: 8px; }
+.hb-calendar-boxed.hb-calendar-shape-circle .hb-calendar-day { border-radius: 999px; aspect-ratio: 1; }
+.hb-calendar-boxed.hb-calendar-shape-square .hb-calendar-day { border-radius: 0; }
+.hb-calendar-boxed.hb-calendar-shape-rounded .hb-calendar-day { border-radius: 8px; }
 .hb-picker-search { width: 100%; min-height: 44px; margin-bottom: 10px; }
 .hb-picker-list { max-height: min(55vh, 480px); overflow: auto; border: 1px solid var(--background-modifier-border); border-radius: 10px; }
 .hb-picker-item { display: block; width: 100%; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--background-modifier-border); text-align: left; color: var(--text-normal); background: transparent; cursor: pointer; overflow-wrap: anywhere; }

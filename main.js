@@ -26,7 +26,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-var PLUGIN_VERSION = "0.4.1";
+var PLUGIN_VERSION = "0.4.2";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
@@ -1184,7 +1184,7 @@ var ModuleModal = class extends import_obsidian.Modal {
         return drop.addOption("0", "\u5468\u65E5").addOption("1", "\u5468\u4E00").setValue(String((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.calendarWeekStart) != null ? _b2 : 0)).onChange((value) => this.module.options.calendarWeekStart = Number(value));
       });
       addColorControl(new import_obsidian.Setting(contentEl).setName("\u4ECA\u65E5\u989C\u8272").setDesc("\u53F3\u4FA7\u7F16\u53F7\u53EF\u590D\u5236\u5230\u5176\u5B83\u6A21\u5757\u3002"), (_i = (_h = this.module.options) == null ? void 0 : _h.calendarAccent) != null ? _i : "#7C3AED", (value) => this.module.options.calendarAccent = value);
-      new import_obsidian.Setting(contentEl).setName("\u4ECA\u65E5\u5F62\u72B6").setDesc("\u65E0\u5E95\u8272\u6A21\u5F0F\u4E0B\uFF0C\u5F62\u72B6\u53EA\u4F5C\u7528\u4E8E\u201C\u4ECA\u5929\u201D\u3002").addDropdown((drop) => {
+      new import_obsidian.Setting(contentEl).setName("\u65E5\u671F\u5F62\u72B6").setDesc("\u4EC5\u5728\u201C\u65B9\u683C\u5E95\u8272\u201D\u6A21\u5F0F\u751F\u6548\uFF1B\u65E0\u5E95\u8272\u6A21\u5F0F\u4E0D\u4F1A\u663E\u793A\u65B9\u5757\u3002").addDropdown((drop) => {
         var _a2, _b2;
         return drop.addOption("rounded", "\u5706\u89D2\u65B9\u5757").addOption("circle", "\u5706\u5F62").addOption("square", "\u76F4\u89D2\u65B9\u5757").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.calendarDayShape) != null ? _b2 : "rounded").onChange((value) => this.module.options.calendarDayShape = value);
       });

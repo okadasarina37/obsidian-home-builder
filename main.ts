@@ -19,7 +19,7 @@ import {
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-const PLUGIN_VERSION = "0.4.1";
+const PLUGIN_VERSION = "0.4.2";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
@@ -1206,7 +1206,7 @@ class ModuleModal extends Modal {
         .setValue(String(this.module.options?.calendarWeekStart ?? 0))
         .onChange((value) => this.module.options!.calendarWeekStart = Number(value) as 0 | 1));
       addColorControl(new Setting(contentEl).setName("今日颜色").setDesc("右侧编号可复制到其它模块。"), this.module.options?.calendarAccent ?? "#7C3AED", (value) => this.module.options!.calendarAccent = value);
-      new Setting(contentEl).setName("今日形状").setDesc("无底色模式下，形状只作用于“今天”。").addDropdown((drop) => drop
+      new Setting(contentEl).setName("日期形状").setDesc("仅在“方格底色”模式生效；无底色模式不会显示方块。").addDropdown((drop) => drop
         .addOption("rounded", "圆角方块")
         .addOption("circle", "圆形")
         .addOption("square", "直角方块")
