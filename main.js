@@ -749,6 +749,11 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
       });
     }
     const body = card.createDiv({ cls: "hb-module-body" });
+    if (this.editing && (module2.kind === "markdown" || module2.kind === "bookshelf" || module2.kind === "assets" || module2.kind === "aiusage")) {
+      const label = module2.queryKind === "tasks" ? "\u4EFB\u52A1\u6E05\u5355" : module2.queryKind === "dataview" ? "Dataview \u8868\u683C" : module2.kind === "markdown" ? "\u67E5\u8BE2" : "\u6570\u636E";
+      body.createEl("p", { text: `${label}\u6A21\u5757\u5DF2\u6DFB\u52A0\u3002\u53EF\u4F7F\u7528\u4E0A\u65B9\u6309\u94AE\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\uFF1B\u70B9\u201C\u5B8C\u6210\u7F16\u8F91\u201D\u540E\u518D\u9884\u89C8\u5185\u5BB9\u3002`, cls: "hb-muted" });
+      return;
+    }
     if (module2.kind === "shortcuts") {
       const shortcuts = body.createDiv({ cls: "hb-shortcuts" });
       for (const item of (_c = module2.shortcuts) != null ? _c : []) {

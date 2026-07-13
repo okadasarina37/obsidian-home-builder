@@ -813,6 +813,15 @@ class HomeBuilderView extends ItemView {
       });
     }
     const body = card.createDiv({ cls: "hb-module-body" });
+    // On iOS, rendering a Tasks/Dataview block while its module is being
+    // inserted can throw a WebKit SyntaxError and abort the add operation.
+    // Editing is for arranging/configuring modules, so defer native query
+    // rendering until the user leaves edit mode.
+    if (this.editing && (module.kind === "markdown" || module.kind === "bookshelf" || module.kind === "assets" || module.kind === "aiusage")) {
+      const label = module.queryKind === "tasks" ? "任务清单" : module.queryKind === "dataview" ? "Dataview 表格" : module.kind === "markdown" ? "查询" : "数据";
+      body.createEl("p", { text: `${label}模块已添加。可使用上方按钮编辑、上移、下移或删除；点“完成编辑”后再预览内容。`, cls: "hb-muted" });
+      return;
+    }
     if (module.kind === "shortcuts") {
       const shortcuts = body.createDiv({ cls: "hb-shortcuts" });
       for (const item of module.shortcuts ?? []) {
