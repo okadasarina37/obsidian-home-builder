@@ -682,7 +682,8 @@ class HomeBuilderView extends ItemView {
   private renderBanner(container: HTMLElement) {
     const banner = this.plugin.config.banner;
     if (!banner.enabled) return;
-    const el = container.createDiv({ cls: `hb-banner${banner.rounded ? " hb-banner-rounded" : ""}` });
+    const el = container.createDiv({ cls: "hb-banner" });
+    if (banner.rounded) el.classList.add("hb-banner-rounded");
     el.style.setProperty("--hb-banner-height", `${Math.max(120, banner.height)}px`);
     el.style.setProperty("--hb-banner-overlay", String(Math.max(0, Math.min(.9, banner.overlay))));
     if (banner.imagePath) {
@@ -764,7 +765,8 @@ class HomeBuilderView extends ItemView {
    * renderer that can fail while a modal is closing on mobile WebKit.
    */
   private renderInsertedModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
-    const card = grid.createDiv({ cls: "hb-module hb-span-1" });
+    const card = grid.createDiv({ cls: "hb-module" });
+    card.classList.add("hb-span-1");
     const title = card.createEl("h2", { text: module.title || "未命名模块" });
     title.addClass("hb-inserted-module-title");
     const controls = card.createDiv({ cls: "hb-module-controls" });
@@ -804,7 +806,9 @@ class HomeBuilderView extends ItemView {
 
   private async renderModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
     const hidden = module.hiddenOn?.includes(this.device());
-    const card = grid.createDiv({ cls: `hb-module hb-span-${module.span ?? 1}${hidden ? " hb-device-hidden" : ""}` });
+    const card = grid.createDiv({ cls: "hb-module" });
+    card.classList.add(`hb-span-${module.span ?? 1}`);
+    if (hidden) card.classList.add("hb-device-hidden");
     if (this.editing && this.device() !== "mobile") {
       card.draggable = true;
       card.addClass("hb-draggable");
@@ -884,7 +888,10 @@ class HomeBuilderView extends ItemView {
       this.renderCountdown(body, module);
     } else if (module.kind === "image") {
       const path = module.options?.imagePath ?? "";
-      if (path) body.createEl("img", { cls: `hb-content-image hb-image-${module.options?.imageFit ?? "cover"}`, attr: { src: vaultImageUrl(this.app, path), alt: module.options?.imageAlt || module.title, loading: "lazy" } });
+      if (path) {
+        const image = body.createEl("img", { cls: "hb-content-image", attr: { src: vaultImageUrl(this.app, path), alt: module.options?.imageAlt || module.title, loading: "lazy" } });
+        image.classList.add(`hb-image-${module.options?.imageFit ?? "cover"}`);
+      }
       else body.createEl("p", { text: "点编辑模块选择图片。", cls: "hb-muted" });
     } else if (module.kind === "weather") {
       const weather = body.createDiv({ cls: "hb-weather" });
