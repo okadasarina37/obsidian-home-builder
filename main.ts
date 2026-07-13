@@ -718,104 +718,78 @@ class HomeBuilderView extends ItemView {
     copy.createEl("span", { text: "从快捷入口、待办、日历、天气等类型中选择。" });
     const add = new ButtonComponent(section).setButtonText("＋ 添加模块").setCta();
     add.buttonEl.setAttribute("aria-label", "添加模块");
-    add.onClick(() => new ModulePickerModal(this.app, async (label, kind, queryKind) => this.addModule(label, kind, queryKind)).open());
+    add.onClick(() => this.openAddMenu(add.buttonEl));
   }
 
-  private async addModule(label: string, kind: ModuleKind, queryKind?: HomeModule["queryKind"]) {
-    const created: HomeModule = { id: newId(), kind, title: label, span: 1, queryKind };
-    if (kind === "shortcuts") created.shortcuts = [];
-    if (queryKind === "tasks") { created.query = { limit: 8 }; created.markdown = taskMarkdown(created.query); }
-    else if (queryKind === "dataview") { created.query = { limit: 8 }; created.markdown = dataviewMarkdown(created.query); }
-    else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
-    if (kind === "text") created.text = "写一点提示或说明。";
-    if (kind === "calendar") created.options = { dailyFolder: "02_日历/每日" };
-    if (kind === "countdown") created.options = { label: "倒数日", targetDate: new Date().toISOString().slice(0, 10) };
-    if (kind === "image") created.options = { imagePath: "", imageAlt: "主页图片", imageFit: "cover" };
-    if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
-    if (kind === "assets") created.options = { assetPath: "09_数字资产/资产" };
-    if (kind === "aiusage") created.options = { usagePath: "03_生活记录/05_AI用量" };
-    if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "当前位置", weatherText: "晴", weatherTemperature: "--°" };
-    const layout = this.plugin.resolvedLayout(this.device());
-    layout.modules.push(created);
+  private openAddMenu(anchor: HTMLElement) {
+    document.querySelector(".hb-add-menu")?.remove();
+    const menu = document.createElement("div");
+    menu.className = "hb-add-menu";
+    for (const [label, kind, description, queryKind] of MODULE_CHOICES) {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.setAttribute("aria-label", `添加${label}模块`);
+      const name = document.createElement("strong");
+      name.textContent = label;
+      const detail = document.createElement("small");
+      detail.textContent = description;
+      option.append(name, detail);
+      option.onclick = async (event) => {
+        event.stopPropagation();
+        menu.remove();
+        const created: HomeModule = { id: newId(), kind, title: label, span: 1, queryKind };
+        if (kind === "shortcuts") created.shortcuts = [];
+        if (queryKind === "tasks") { created.query = { limit: 8 }; created.markdown = taskMarkdown(created.query); }
+        else if (queryKind === "dataview") { created.query = { limit: 8 }; created.markdown = dataviewMarkdown(created.query); }
+        else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
+        if (kind === "text") created.text = "写一点提示或说明。";
+        if (kind === "calendar") created.options = { dailyFolder: "02_日历/每日" };
+        if (kind === "countdown") created.options = { label: "倒数日", targetDate: new Date().toISOString().slice(0, 10) };
+        if (kind === "image") created.options = { imagePath: "", imageAlt: "主页图片", imageFit: "cover" };
+        if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
+        if (kind === "assets") created.options = { assetPath: "09_数字资产/资产" };
+        if (kind === "aiusage") created.options = { usagePath: "03_生活记录/05_AI用量" };
+        if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "当前位置", weatherText: "晴", weatherTemperature: "--°" };
 
-    // Do not empty/rebuild the ItemView after tapping a choice on iPhone.
-    // WebKit can reject that DOM transition with a SyntaxError. Insert the
-    // one new card directly into the visible editor instead.
-    const grid = this.contentEl.querySelector<HTMLElement>(".hb-grid");
-    if (grid) {
-      grid.querySelector(".hb-empty")?.remove();
-      this.renderInsertedModule(grid, created, layout);
+        const layout = this.plugin.resolvedLayout(this.device());
+        layout.modules.push(created);
+        try {
+          await this.plugin.saveConfig("添加模块：" + label, false);
+        } catch (error) {
+          layout.modules.splice(layout.modules.indexOf(created), 1);
+          new Notice(`保存“${label}”失败：${String(error)}`, 10000);
+          return;
+        }
+
+        try {
+          await this.render();
+          new Notice(`已添加“${label}”。模块已显示在下方，可直接编辑、移动或删除。`);
+          window.setTimeout(() => {
+            const cards = this.contentEl.querySelectorAll<HTMLElement>(".hb-module");
+            cards.item(cards.length - 1)?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 50);
+        } catch (error) {
+          new Notice(`“${label}”已保存，但编辑卡片显示失败：${String(error)}`, 10000);
+        }
+      };
+      menu.appendChild(option);
+    }
+
+    document.body.appendChild(menu);
+    const rect = anchor.getBoundingClientRect();
+    const viewportPadding = 12;
+    menu.style.left = `${Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - viewportPadding - menu.offsetWidth)}px`;
+    const preferredTop = rect.bottom + 8;
+    const availableBelow = window.innerHeight - preferredTop - viewportPadding;
+    const availableAbove = rect.top - viewportPadding;
+    if (availableBelow < 220 && availableAbove > availableBelow) {
+      menu.style.top = `${viewportPadding}px`;
+      menu.style.maxHeight = `${Math.max(180, availableAbove)}px`;
     } else {
-      await this.render();
+      menu.style.top = `${preferredTop}px`;
+      menu.style.maxHeight = `${Math.max(180, availableBelow)}px`;
     }
-
-    try {
-      await this.plugin.saveConfig("添加模块：" + label, false);
-      new Notice(`已添加“${label}”。模块已显示在下方，可直接编辑、上移、下移或删除。`);
-    } catch (error) {
-      // Keep the card visible so the user can continue editing; surface a
-      // precise persistence warning instead of pretending the add failed.
-      new Notice(`“${label}”已显示，但暂未保存：${String(error)}`, 10000);
-    }
-  }
-
-  /**
-   * iOS-safe insertion path.  It intentionally uses native buttons instead
-   * of Obsidian ButtonComponent, which is the only part of the normal card
-   * renderer that can fail while a modal is closing on mobile WebKit.
-   */
-  private renderInsertedModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
-    // Use only platform DOM APIs here. Obsidian's createEl/addClass helpers
-    // surface a Safari DOMException in some mobile WebViews during insertion.
-    const card = document.createElement("section");
-    card.className = "hb-module hb-span-1";
-    grid.appendChild(card);
-    const title = document.createElement("h2");
-    title.className = "hb-inserted-module-title";
-    title.textContent = module.title || "未命名模块";
-    card.appendChild(title);
-    const controls = document.createElement("div");
-    controls.className = "hb-module-controls";
-    card.appendChild(controls);
-    const addButton = (text: string, handler: () => void | Promise<void>, danger = false) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = text;
-      button.setAttribute("aria-label", text);
-      if (danger) button.className = "mod-warning";
-      button.onclick = () => void handler();
-      controls.appendChild(button);
-      return button;
-    };
-    const persist = async () => {
-      try { await this.plugin.saveConfig("编辑模块", false); }
-      catch (error) { new Notice(`模块已修改，但暂未保存：${String(error)}`, 10000); }
-    };
-    addButton("编辑", () => this.openModuleEditor(module));
-    addButton("上移", async () => {
-      const index = layout.modules.indexOf(module);
-      if (index <= 0) return;
-      [layout.modules[index - 1], layout.modules[index]] = [layout.modules[index], layout.modules[index - 1]];
-      card.previousElementSibling?.before(card);
-      await persist();
-    });
-    addButton("下移", async () => {
-      const index = layout.modules.indexOf(module);
-      if (index < 0 || index >= layout.modules.length - 1) return;
-      [layout.modules[index], layout.modules[index + 1]] = [layout.modules[index + 1], layout.modules[index]];
-      card.nextElementSibling?.after(card);
-      await persist();
-    });
-    addButton("删除", async () => {
-      const index = layout.modules.indexOf(module);
-      if (index >= 0) layout.modules.splice(index, 1);
-      card.remove();
-      await persist();
-    }, true);
-    const hint = document.createElement("p");
-    hint.className = "hb-muted";
-    hint.textContent = "模块已添加。可直接使用上方按钮编辑、上移、下移或删除；完成编辑后预览内容。";
-    card.appendChild(hint);
+    window.setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
   }
 
   private async renderModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
@@ -996,40 +970,6 @@ class HomeBuilderView extends ItemView {
 
   private openModuleEditor(module: HomeModule) {
     new ModuleModal(this.app, module, async () => await this.plugin.saveConfig()).open();
-  }
-}
-
-class ModulePickerModal extends Modal {
-  private busy = false;
-
-  constructor(
-    private appRef: App,
-    private onPick: (label: string, kind: ModuleKind, queryKind?: HomeModule["queryKind"]) => Promise<void>,
-  ) { super(appRef); }
-
-  onOpen() {
-    this.contentEl.addClass("hb-modal", "hb-module-picker-modal");
-    this.contentEl.createEl("h2", { text: "添加模块" });
-    this.contentEl.createEl("p", { text: "点一种模块后会立即添加到当前主页顶部，并回到主页显示编辑按钮。", cls: "setting-item-description" });
-    const list = this.contentEl.createDiv({ cls: "hb-module-picker-list" });
-    for (const [label, kind, description, queryKind] of MODULE_CHOICES) {
-      const button = list.createEl("button", { cls: "hb-module-picker-item" });
-      button.createEl("strong", { text: label });
-      button.createEl("small", { text: description });
-      button.setAttribute("aria-label", `添加${label}模块`);
-      button.onclick = async () => {
-        if (this.busy) return;
-        this.busy = true;
-        // 先关闭 Modal，再调用会触发当前视图重新绘制的添加操作。
-        // 这避免 iOS Obsidian 在 Modal 存在期间替换工作区 DOM 时的 SyntaxError。
-        this.close();
-        try {
-          await this.onPick(label, kind, queryKind);
-        } catch (error) {
-          new Notice(`添加“${label}”失败：${String(error)}`, 10000);
-        }
-      };
-    }
   }
 }
 

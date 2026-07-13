@@ -643,103 +643,80 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     copy.createEl("span", { text: "\u4ECE\u5FEB\u6377\u5165\u53E3\u3001\u5F85\u529E\u3001\u65E5\u5386\u3001\u5929\u6C14\u7B49\u7C7B\u578B\u4E2D\u9009\u62E9\u3002" });
     const add = new import_obsidian.ButtonComponent(section).setButtonText("\uFF0B \u6DFB\u52A0\u6A21\u5757").setCta();
     add.buttonEl.setAttribute("aria-label", "\u6DFB\u52A0\u6A21\u5757");
-    add.onClick(() => new ModulePickerModal(this.app, async (label, kind, queryKind) => this.addModule(label, kind, queryKind)).open());
+    add.onClick(() => this.openAddMenu(add.buttonEl));
   }
-  async addModule(label, kind, queryKind) {
+  openAddMenu(anchor) {
     var _a;
-    const created = { id: newId(), kind, title: label, span: 1, queryKind };
-    if (kind === "shortcuts") created.shortcuts = [];
-    if (queryKind === "tasks") {
-      created.query = { limit: 8 };
-      created.markdown = taskMarkdown(created.query);
-    } else if (queryKind === "dataview") {
-      created.query = { limit: 8 };
-      created.markdown = dataviewMarkdown(created.query);
-    } else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
-    if (kind === "text") created.text = "\u5199\u4E00\u70B9\u63D0\u793A\u6216\u8BF4\u660E\u3002";
-    if (kind === "calendar") created.options = { dailyFolder: "02_\u65E5\u5386/\u6BCF\u65E5" };
-    if (kind === "countdown") created.options = { label: "\u5012\u6570\u65E5", targetDate: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) };
-    if (kind === "image") created.options = { imagePath: "", imageAlt: "\u4E3B\u9875\u56FE\u7247", imageFit: "cover" };
-    if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
-    if (kind === "assets") created.options = { assetPath: "09_\u6570\u5B57\u8D44\u4EA7/\u8D44\u4EA7" };
-    if (kind === "aiusage") created.options = { usagePath: "03_\u751F\u6D3B\u8BB0\u5F55/05_AI\u7528\u91CF" };
-    if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "\u5F53\u524D\u4F4D\u7F6E", weatherText: "\u6674", weatherTemperature: "--\xB0" };
-    const layout = this.plugin.resolvedLayout(this.device());
-    layout.modules.push(created);
-    const grid = this.contentEl.querySelector(".hb-grid");
-    if (grid) {
-      (_a = grid.querySelector(".hb-empty")) == null ? void 0 : _a.remove();
-      this.renderInsertedModule(grid, created, layout);
+    (_a = document.querySelector(".hb-add-menu")) == null ? void 0 : _a.remove();
+    const menu = document.createElement("div");
+    menu.className = "hb-add-menu";
+    for (const [label, kind, description, queryKind] of MODULE_CHOICES) {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.setAttribute("aria-label", `\u6DFB\u52A0${label}\u6A21\u5757`);
+      const name = document.createElement("strong");
+      name.textContent = label;
+      const detail = document.createElement("small");
+      detail.textContent = description;
+      option.append(name, detail);
+      option.onclick = async (event) => {
+        event.stopPropagation();
+        menu.remove();
+        const created = { id: newId(), kind, title: label, span: 1, queryKind };
+        if (kind === "shortcuts") created.shortcuts = [];
+        if (queryKind === "tasks") {
+          created.query = { limit: 8 };
+          created.markdown = taskMarkdown(created.query);
+        } else if (queryKind === "dataview") {
+          created.query = { limit: 8 };
+          created.markdown = dataviewMarkdown(created.query);
+        } else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
+        if (kind === "text") created.text = "\u5199\u4E00\u70B9\u63D0\u793A\u6216\u8BF4\u660E\u3002";
+        if (kind === "calendar") created.options = { dailyFolder: "02_\u65E5\u5386/\u6BCF\u65E5" };
+        if (kind === "countdown") created.options = { label: "\u5012\u6570\u65E5", targetDate: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) };
+        if (kind === "image") created.options = { imagePath: "", imageAlt: "\u4E3B\u9875\u56FE\u7247", imageFit: "cover" };
+        if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
+        if (kind === "assets") created.options = { assetPath: "09_\u6570\u5B57\u8D44\u4EA7/\u8D44\u4EA7" };
+        if (kind === "aiusage") created.options = { usagePath: "03_\u751F\u6D3B\u8BB0\u5F55/05_AI\u7528\u91CF" };
+        if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "\u5F53\u524D\u4F4D\u7F6E", weatherText: "\u6674", weatherTemperature: "--\xB0" };
+        const layout = this.plugin.resolvedLayout(this.device());
+        layout.modules.push(created);
+        try {
+          await this.plugin.saveConfig("\u6DFB\u52A0\u6A21\u5757\uFF1A" + label, false);
+        } catch (error) {
+          layout.modules.splice(layout.modules.indexOf(created), 1);
+          new import_obsidian.Notice(`\u4FDD\u5B58\u201C${label}\u201D\u5931\u8D25\uFF1A${String(error)}`, 1e4);
+          return;
+        }
+        try {
+          await this.render();
+          new import_obsidian.Notice(`\u5DF2\u6DFB\u52A0\u201C${label}\u201D\u3002\u6A21\u5757\u5DF2\u663E\u793A\u5728\u4E0B\u65B9\uFF0C\u53EF\u76F4\u63A5\u7F16\u8F91\u3001\u79FB\u52A8\u6216\u5220\u9664\u3002`);
+          window.setTimeout(() => {
+            var _a2;
+            const cards = this.contentEl.querySelectorAll(".hb-module");
+            (_a2 = cards.item(cards.length - 1)) == null ? void 0 : _a2.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 50);
+        } catch (error) {
+          new import_obsidian.Notice(`\u201C${label}\u201D\u5DF2\u4FDD\u5B58\uFF0C\u4F46\u7F16\u8F91\u5361\u7247\u663E\u793A\u5931\u8D25\uFF1A${String(error)}`, 1e4);
+        }
+      };
+      menu.appendChild(option);
+    }
+    document.body.appendChild(menu);
+    const rect = anchor.getBoundingClientRect();
+    const viewportPadding = 12;
+    menu.style.left = `${Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - viewportPadding - menu.offsetWidth)}px`;
+    const preferredTop = rect.bottom + 8;
+    const availableBelow = window.innerHeight - preferredTop - viewportPadding;
+    const availableAbove = rect.top - viewportPadding;
+    if (availableBelow < 220 && availableAbove > availableBelow) {
+      menu.style.top = `${viewportPadding}px`;
+      menu.style.maxHeight = `${Math.max(180, availableAbove)}px`;
     } else {
-      await this.render();
+      menu.style.top = `${preferredTop}px`;
+      menu.style.maxHeight = `${Math.max(180, availableBelow)}px`;
     }
-    try {
-      await this.plugin.saveConfig("\u6DFB\u52A0\u6A21\u5757\uFF1A" + label, false);
-      new import_obsidian.Notice(`\u5DF2\u6DFB\u52A0\u201C${label}\u201D\u3002\u6A21\u5757\u5DF2\u663E\u793A\u5728\u4E0B\u65B9\uFF0C\u53EF\u76F4\u63A5\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\u3002`);
-    } catch (error) {
-      new import_obsidian.Notice(`\u201C${label}\u201D\u5DF2\u663E\u793A\uFF0C\u4F46\u6682\u672A\u4FDD\u5B58\uFF1A${String(error)}`, 1e4);
-    }
-  }
-  /**
-   * iOS-safe insertion path.  It intentionally uses native buttons instead
-   * of Obsidian ButtonComponent, which is the only part of the normal card
-   * renderer that can fail while a modal is closing on mobile WebKit.
-   */
-  renderInsertedModule(grid, module2, layout) {
-    const card = document.createElement("section");
-    card.className = "hb-module hb-span-1";
-    grid.appendChild(card);
-    const title = document.createElement("h2");
-    title.className = "hb-inserted-module-title";
-    title.textContent = module2.title || "\u672A\u547D\u540D\u6A21\u5757";
-    card.appendChild(title);
-    const controls = document.createElement("div");
-    controls.className = "hb-module-controls";
-    card.appendChild(controls);
-    const addButton = (text, handler, danger = false) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = text;
-      button.setAttribute("aria-label", text);
-      if (danger) button.className = "mod-warning";
-      button.onclick = () => void handler();
-      controls.appendChild(button);
-      return button;
-    };
-    const persist = async () => {
-      try {
-        await this.plugin.saveConfig("\u7F16\u8F91\u6A21\u5757", false);
-      } catch (error) {
-        new import_obsidian.Notice(`\u6A21\u5757\u5DF2\u4FEE\u6539\uFF0C\u4F46\u6682\u672A\u4FDD\u5B58\uFF1A${String(error)}`, 1e4);
-      }
-    };
-    addButton("\u7F16\u8F91", () => this.openModuleEditor(module2));
-    addButton("\u4E0A\u79FB", async () => {
-      var _a;
-      const index = layout.modules.indexOf(module2);
-      if (index <= 0) return;
-      [layout.modules[index - 1], layout.modules[index]] = [layout.modules[index], layout.modules[index - 1]];
-      (_a = card.previousElementSibling) == null ? void 0 : _a.before(card);
-      await persist();
-    });
-    addButton("\u4E0B\u79FB", async () => {
-      var _a;
-      const index = layout.modules.indexOf(module2);
-      if (index < 0 || index >= layout.modules.length - 1) return;
-      [layout.modules[index], layout.modules[index + 1]] = [layout.modules[index + 1], layout.modules[index]];
-      (_a = card.nextElementSibling) == null ? void 0 : _a.after(card);
-      await persist();
-    });
-    addButton("\u5220\u9664", async () => {
-      const index = layout.modules.indexOf(module2);
-      if (index >= 0) layout.modules.splice(index, 1);
-      card.remove();
-      await persist();
-    }, true);
-    const hint = document.createElement("p");
-    hint.className = "hb-muted";
-    hint.textContent = "\u6A21\u5757\u5DF2\u6DFB\u52A0\u3002\u53EF\u76F4\u63A5\u4F7F\u7528\u4E0A\u65B9\u6309\u94AE\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\uFF1B\u5B8C\u6210\u7F16\u8F91\u540E\u9884\u89C8\u5185\u5BB9\u3002";
-    card.appendChild(hint);
+    window.setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
   }
   async renderModule(grid, module2, layout) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;
@@ -949,36 +926,6 @@ LIMIT 1
   }
   openModuleEditor(module2) {
     new ModuleModal(this.app, module2, async () => await this.plugin.saveConfig()).open();
-  }
-};
-var ModulePickerModal = class extends import_obsidian.Modal {
-  constructor(appRef, onPick) {
-    super(appRef);
-    this.appRef = appRef;
-    this.onPick = onPick;
-    this.busy = false;
-  }
-  onOpen() {
-    this.contentEl.addClass("hb-modal", "hb-module-picker-modal");
-    this.contentEl.createEl("h2", { text: "\u6DFB\u52A0\u6A21\u5757" });
-    this.contentEl.createEl("p", { text: "\u70B9\u4E00\u79CD\u6A21\u5757\u540E\u4F1A\u7ACB\u5373\u6DFB\u52A0\u5230\u5F53\u524D\u4E3B\u9875\u9876\u90E8\uFF0C\u5E76\u56DE\u5230\u4E3B\u9875\u663E\u793A\u7F16\u8F91\u6309\u94AE\u3002", cls: "setting-item-description" });
-    const list = this.contentEl.createDiv({ cls: "hb-module-picker-list" });
-    for (const [label, kind, description, queryKind] of MODULE_CHOICES) {
-      const button = list.createEl("button", { cls: "hb-module-picker-item" });
-      button.createEl("strong", { text: label });
-      button.createEl("small", { text: description });
-      button.setAttribute("aria-label", `\u6DFB\u52A0${label}\u6A21\u5757`);
-      button.onclick = async () => {
-        if (this.busy) return;
-        this.busy = true;
-        this.close();
-        try {
-          await this.onPick(label, kind, queryKind);
-        } catch (error) {
-          new import_obsidian.Notice(`\u6DFB\u52A0\u201C${label}\u201D\u5931\u8D25\uFF1A${String(error)}`, 1e4);
-        }
-      };
-    }
   }
 };
 var ModuleModal = class extends import_obsidian.Modal {
