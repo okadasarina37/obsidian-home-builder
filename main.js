@@ -645,6 +645,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     add.onClick(() => new ModulePickerModal(this.app, async (label, kind, queryKind) => this.addModule(label, kind, queryKind)).open());
   }
   async addModule(label, kind, queryKind) {
+    var _a;
     const created = { id: newId(), kind, title: label, span: 1, queryKind };
     if (kind === "shortcuts") created.shortcuts = [];
     if (queryKind === "tasks") {
@@ -662,10 +663,21 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     if (kind === "assets") created.options = { assetPath: "09_\u6570\u5B57\u8D44\u4EA7/\u8D44\u4EA7" };
     if (kind === "aiusage") created.options = { usagePath: "03_\u751F\u6D3B\u8BB0\u5F55/05_AI\u7528\u91CF" };
     if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "\u5F53\u524D\u4F4D\u7F6E", weatherText: "\u6674", weatherTemperature: "--\xB0" };
-    this.plugin.resolvedLayout(this.device()).modules.push(created);
-    await this.plugin.saveConfig("\u6DFB\u52A0\u6A21\u5757\uFF1A" + label, false);
-    await this.render();
-    new import_obsidian.Notice(`\u5DF2\u6DFB\u52A0\u201C${label}\u201D\u3002\u6A21\u5757\u5DF2\u663E\u793A\u5728\u4E0B\u65B9\uFF0C\u53EF\u76F4\u63A5\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\u3002`);
+    const layout = this.plugin.resolvedLayout(this.device());
+    layout.modules.push(created);
+    const grid = this.contentEl.querySelector(".hb-grid");
+    if (grid) {
+      (_a = grid.querySelector(".hb-empty")) == null ? void 0 : _a.remove();
+      await this.renderModule(grid, created, layout);
+    } else {
+      await this.render();
+    }
+    try {
+      await this.plugin.saveConfig("\u6DFB\u52A0\u6A21\u5757\uFF1A" + label, false);
+      new import_obsidian.Notice(`\u5DF2\u6DFB\u52A0\u201C${label}\u201D\u3002\u6A21\u5757\u5DF2\u663E\u793A\u5728\u4E0B\u65B9\uFF0C\u53EF\u76F4\u63A5\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\u3002`);
+    } catch (error) {
+      new import_obsidian.Notice(`\u201C${label}\u201D\u5DF2\u663E\u793A\uFF0C\u4F46\u6682\u672A\u4FDD\u5B58\uFF1A${String(error)}`, 1e4);
+    }
   }
   async renderModule(grid, module2, layout) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;

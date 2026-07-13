@@ -734,12 +734,28 @@ class HomeBuilderView extends ItemView {
     if (kind === "assets") created.options = { assetPath: "09_数字资产/资产" };
     if (kind === "aiusage") created.options = { usagePath: "03_生活记录/05_AI用量" };
     if (kind === "weather") created.options = { weatherMode: "manual", weatherLocation: "当前位置", weatherText: "晴", weatherTemperature: "--°" };
-    // 手机端弹窗仍打开时重绘整个工作区会导致 iOS WebView 抛出 DOMException。
-    // 先保存而不广播刷新，随后只重绘当前主页；新模块追加在编辑区下方。
-    this.plugin.resolvedLayout(this.device()).modules.push(created);
-    await this.plugin.saveConfig("添加模块：" + label, false);
-    await this.render();
-    new Notice(`已添加“${label}”。模块已显示在下方，可直接编辑、上移、下移或删除。`);
+    const layout = this.plugin.resolvedLayout(this.device());
+    layout.modules.push(created);
+
+    // Do not empty/rebuild the ItemView after tapping a choice on iPhone.
+    // WebKit can reject that DOM transition with a SyntaxError. Insert the
+    // one new card directly into the visible editor instead.
+    const grid = this.contentEl.querySelector<HTMLElement>(".hb-grid");
+    if (grid) {
+      grid.querySelector(".hb-empty")?.remove();
+      await this.renderModule(grid, created, layout);
+    } else {
+      await this.render();
+    }
+
+    try {
+      await this.plugin.saveConfig("添加模块：" + label, false);
+      new Notice(`已添加“${label}”。模块已显示在下方，可直接编辑、上移、下移或删除。`);
+    } catch (error) {
+      // Keep the card visible so the user can continue editing; surface a
+      // precise persistence warning instead of pretending the add failed.
+      new Notice(`“${label}”已显示，但暂未保存：${String(error)}`, 10000);
+    }
   }
 
   private async renderModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
