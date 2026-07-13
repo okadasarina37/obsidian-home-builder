@@ -1,6 +1,7 @@
 import {
   App,
   ButtonComponent,
+  ColorComponent,
   ItemView,
   MarkdownRenderer,
   Modal,
@@ -11,13 +12,14 @@ import {
   Setting,
   TFile,
   TFolder,
+  TextComponent,
   WorkspaceLeaf,
   normalizePath,
 } from "obsidian";
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-const PLUGIN_VERSION = "0.4.0";
+const PLUGIN_VERSION = "0.4.1";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
@@ -138,6 +140,33 @@ const newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
 const isExternalUrl = (value: string) => /^(https?:)?\/\//i.test(value);
+const isHexColor = (value: string) => /^#[0-9a-f]{6}$/i.test(value.trim());
+
+function addColorControl(setting: Setting, value: string, onChange: (value: string) => void) {
+  let picker: ColorComponent | undefined;
+  let text: TextComponent | undefined;
+  const pickerValue = isHexColor(value) ? value : "#7c3aed";
+  setting.addColorPicker((component) => {
+    picker = component;
+    component.setValue(pickerValue).onChange((next) => {
+      const normalized = next.toUpperCase();
+      text?.setValue(normalized);
+      onChange(normalized);
+    });
+  });
+  setting.addText((component) => {
+    text = component;
+    component.inputEl.addClass("hb-color-code");
+    component.inputEl.setAttribute("spellcheck", "false");
+    component.setPlaceholder("#RRGGBB").setValue(value).onChange((next) => {
+      const normalized = next.trim().toUpperCase();
+      if (!isHexColor(normalized)) return;
+      picker?.setValue(normalized);
+      onChange(normalized);
+    });
+  });
+  return { setText: (next: string) => text?.setValue(next) };
+}
 const MODULE_CHOICES: Array<[string, ModuleKind, string, HomeModule["queryKind"]?]> = [
   ["快捷入口", "shortcuts", "链接与常用笔记入口"],
   ["任务清单", "markdown", "可视化生成 Tasks 查询", "tasks"],
@@ -1165,10 +1194,10 @@ class ModuleModal extends Modal {
       new Setting(contentEl).setName("每日笔记目录").setDesc("点击日期时打开该目录下的 YYYY-MM-DD 笔记。")
         .addText((text) => text.setValue(this.module.options?.dailyFolder ?? "02_日历/每日").onChange((value) => this.module.options!.dailyFolder = value.trim()));
       new Setting(contentEl).setName("选择目录").addButton((button) => button.setButtonText("浏览库内文件夹").onClick(() => new VaultPickerModal(this.appRef, "选择每日笔记目录", "folder", (path) => this.module.options!.dailyFolder = path).open()));
-      new Setting(contentEl).setName("日历样式").addDropdown((drop) => drop
-        .addOption("minimal", "极简")
-        .addOption("boxed", "日期方格")
-        .addOption("compact", "紧凑")
+      new Setting(contentEl).setName("日期底色与密度").setDesc("无底色只高亮今天；方格底色会给每个日期加背景。").addDropdown((drop) => drop
+        .addOption("minimal", "无底色（标准）")
+        .addOption("boxed", "方格底色")
+        .addOption("compact", "无底色（紧凑）")
         .setValue(this.module.options?.calendarStyle ?? "minimal")
         .onChange((value) => this.module.options!.calendarStyle = value as NonNullable<HomeModule["options"]>["calendarStyle"]));
       new Setting(contentEl).setName("一周开始日").addDropdown((drop) => drop
@@ -1176,10 +1205,8 @@ class ModuleModal extends Modal {
         .addOption("1", "周一")
         .setValue(String(this.module.options?.calendarWeekStart ?? 0))
         .onChange((value) => this.module.options!.calendarWeekStart = Number(value) as 0 | 1));
-      new Setting(contentEl).setName("今日颜色").addColorPicker((color) => color
-        .setValue(this.module.options?.calendarAccent ?? "#7c3aed")
-        .onChange((value) => this.module.options!.calendarAccent = value));
-      new Setting(contentEl).setName("日期形状").addDropdown((drop) => drop
+      addColorControl(new Setting(contentEl).setName("今日颜色").setDesc("右侧编号可复制到其它模块。"), this.module.options?.calendarAccent ?? "#7C3AED", (value) => this.module.options!.calendarAccent = value);
+      new Setting(contentEl).setName("今日形状").setDesc("无底色模式下，形状只作用于“今天”。").addDropdown((drop) => drop
         .addOption("rounded", "圆角方块")
         .addOption("circle", "圆形")
         .addOption("square", "直角方块")
@@ -1226,15 +1253,30 @@ class ModuleModal extends Modal {
 
     this.module.style ??= {};
     contentEl.createEl("h3", { text: "模块外观" });
-    new Setting(contentEl).setName("背景色").setDesc("仅修改当前模块。")
-      .addColorPicker((color) => color.setValue(this.module.style?.background ?? "#242134").onChange((value) => this.module.style!.background = value))
-      .addButton((button) => button.setButtonText("跟随主题").onClick(() => { delete this.module.style!.background; }));
-    new Setting(contentEl).setName("文字颜色")
-      .addColorPicker((color) => color.setValue(this.module.style?.textColor ?? "#ffffff").onChange((value) => this.module.style!.textColor = value))
-      .addButton((button) => button.setButtonText("跟随主题").onClick(() => { delete this.module.style!.textColor; }));
-    new Setting(contentEl).setName("边框颜色")
-      .addColorPicker((color) => color.setValue(this.module.style?.borderColor ?? "#4b465f").onChange((value) => this.module.style!.borderColor = value))
-      .addButton((button) => button.setButtonText("跟随主题").onClick(() => { delete this.module.style!.borderColor; }));
+    const backgroundSetting = new Setting(contentEl).setName("背景色").setDesc("透明会去掉当前模块的背景；右侧编号可复制。");
+    const backgroundControl = addColorControl(backgroundSetting, this.module.style?.background ?? "#242134", (value) => this.module.style!.background = value);
+    backgroundSetting.addButton((button) => button.setButtonText("无卡片底").onClick(() => {
+      this.module.style!.background = "transparent";
+      this.module.style!.borderColor = "transparent";
+      this.module.style!.shadow = "none";
+      backgroundControl.setText("transparent");
+    }));
+    backgroundSetting.addButton((button) => button.setButtonText("跟随主题").onClick(() => {
+      delete this.module.style!.background;
+      backgroundControl.setText("");
+    }));
+    const textSetting = new Setting(contentEl).setName("文字颜色").setDesc("右侧编号可复制。");
+    const textControl = addColorControl(textSetting, this.module.style?.textColor ?? "#FFFFFF", (value) => this.module.style!.textColor = value);
+    textSetting.addButton((button) => button.setButtonText("跟随主题").onClick(() => {
+      delete this.module.style!.textColor;
+      textControl.setText("");
+    }));
+    const borderSetting = new Setting(contentEl).setName("边框颜色").setDesc("右侧编号可复制。");
+    const borderControl = addColorControl(borderSetting, this.module.style?.borderColor ?? "#4B465F", (value) => this.module.style!.borderColor = value);
+    borderSetting.addButton((button) => button.setButtonText("跟随主题").onClick(() => {
+      delete this.module.style!.borderColor;
+      borderControl.setText("");
+    }));
     new Setting(contentEl).setName("圆角").addSlider((slider) => slider
       .setLimits(0, 28, 2)
       .setValue(this.module.style?.radius ?? 16)
@@ -1265,18 +1307,20 @@ class ThemeModal extends Modal {
     contentEl.addClass("hb-modal");
     contentEl.createEl("h2", { text: "主页外观" });
     new Setting(contentEl).setName("背景类型").addDropdown((drop) => drop
-      .addOption("none", "跟随 Obsidian")
+      .addOption("none", "透明 / 跟随 Obsidian")
       .addOption("color", "纯色")
       .addOption("gradient", "渐变")
       .addOption("image", "图片（库内或 URL）")
       .setValue(this.plugin.config.theme.backgroundType)
       .onChange((value) => this.plugin.config.theme.backgroundType = value as HomeConfig["theme"]["backgroundType"]));
-    new Setting(contentEl).setName("纯色背景").setDesc("选色后会自动切换为纯色背景。").addColorPicker((color) => color
-      .setValue(/^#[0-9a-f]{6}$/i.test(this.plugin.config.theme.backgroundValue) ? this.plugin.config.theme.backgroundValue : "#1e1e2e")
-      .onChange((value) => {
+    addColorControl(
+      new Setting(contentEl).setName("纯色背景").setDesc("选色后自动切换为纯色；右侧编号可复制。"),
+      isHexColor(this.plugin.config.theme.backgroundValue) ? this.plugin.config.theme.backgroundValue : "#1E1E2E",
+      (value) => {
         this.plugin.config.theme.backgroundType = "color";
         this.plugin.config.theme.backgroundValue = value;
-      }));
+      },
+    );
     new Setting(contentEl).setName("渐变预设").addDropdown((drop) => drop
       .addOption("", "不使用预设")
       .addOption("linear-gradient(145deg, #171426, #2b1f47)", "深紫夜色")
@@ -1291,7 +1335,7 @@ class ThemeModal extends Modal {
       }));
     new Setting(contentEl).setName("背景值").setDesc("纯色填 #1e1e2e；渐变填 linear-gradient(...)；图片可填库内路径或 URL。").addText((text) => text.setValue(this.plugin.config.theme.backgroundValue).onChange((value) => this.plugin.config.theme.backgroundValue = value));
     new Setting(contentEl).setName("选择库内背景图").addButton((button) => button.setButtonText("选择图片").onClick(() => new VaultPickerModal(this.appRef, "选择背景图", "image", (path) => this.plugin.config.theme.backgroundValue = path).open()));
-    new Setting(contentEl).setName("强调色").addColorPicker((color) => color.setValue(this.plugin.config.theme.accent).onChange((value) => this.plugin.config.theme.accent = value));
+    addColorControl(new Setting(contentEl).setName("强调色").setDesc("右侧编号可复制。"), this.plugin.config.theme.accent, (value) => this.plugin.config.theme.accent = value);
     new Setting(contentEl).setName("卡片不透明度").addSlider((slider) => slider.setLimits(.45, 1, .05).setValue(this.plugin.config.theme.cardOpacity).setDynamicTooltip().onChange((value) => this.plugin.config.theme.cardOpacity = value));
     const actions = contentEl.createDiv({ cls: "modal-button-container" });
     new ButtonComponent(actions).setButtonText("取消").onClick(() => this.close());
@@ -1306,6 +1350,7 @@ class BannerModal extends Modal {
     const banner = this.plugin.config.banner;
     contentEl.addClass("hb-modal");
     contentEl.createEl("h2", { text: "主页横幅" });
+    contentEl.createEl("p", { text: "设置方法：先开启横幅 → 选择库内图片或粘贴图片 URL → 调整高度和文字遮罩 → 保存。", cls: "setting-item-description" });
     new Setting(contentEl).setName("启用横幅").setDesc("关闭后保留普通主页标题，不加载横幅图片。").addToggle((toggle) => toggle.setValue(banner.enabled).onChange((value) => banner.enabled = value));
     new Setting(contentEl).setName("图片路径或 URL").addText((text) => text.setValue(banner.imagePath).onChange((value) => banner.imagePath = value.trim()));
     new Setting(contentEl).setName("选择库内图片").addButton((button) => button.setButtonText("选择图片").onClick(() => new VaultPickerModal(this.appRef, "选择横幅图片", "image", (path) => banner.imagePath = path).open()));
