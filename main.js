@@ -26,7 +26,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-var PLUGIN_VERSION = "0.4.2";
+var PLUGIN_VERSION = "0.4.3";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
@@ -697,7 +697,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
   renderEditorBar(container) {
     const bar = container.createDiv({ cls: "hb-editor-bar" });
     bar.createEl("strong", { text: "\u7F16\u8F91\u6A21\u5F0F" });
-    bar.createSpan({ text: "\u5148\u6DFB\u52A0\u6A21\u5757\uFF1B\u6BCF\u5F20\u6A21\u5757\u4E0B\u65B9\u53EF\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\u3002" });
+    bar.createSpan({ text: this.device() === "mobile" ? "\u5148\u6DFB\u52A0\u6A21\u5757\uFF1B\u6BCF\u5F20\u6A21\u5757\u4E0B\u65B9\u53EF\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\u3002" : "\u5148\u6DFB\u52A0\u6A21\u5757\uFF1B\u53EF\u62D6\u52A8\u6392\u5E8F\uFF0C\u4E5F\u53EF\u7528\u5DE6\u53F3\u79FB\u52A8\u4E00\u683C\u3001\u4E0A\u4E0B\u4E00\u6574\u884C\u3002" });
     for (const device of ["mobile", "tablet", "desktop"]) {
       const button = new import_obsidian.ButtonComponent(bar).setButtonText(device === "mobile" ? "\u624B\u673A" : device === "tablet" ? "Pad" : "\u7535\u8111");
       if (this.device() === device) button.setClass("mod-cta");
@@ -885,10 +885,14 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
           button.buttonEl.setAttribute("aria-label", label);
           return button;
         };
+        const index = layout.modules.indexOf(module2);
+        const columns = this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
         action("pencil", "\u7F16\u8F91").onClick(() => this.openModuleEditor(module2));
         action("copy", "\u590D\u5236").onClick(duplicate);
-        action("arrow-up", "\u4E0A\u79FB").setDisabled(layout.modules.indexOf(module2) === 0).onClick(() => this.move(layout, module2, -1));
-        action("arrow-down", "\u4E0B\u79FB").setDisabled(layout.modules.indexOf(module2) === layout.modules.length - 1).onClick(() => this.move(layout, module2, 1));
+        action("arrow-left", "\u5DE6\u79FB\u4E00\u683C").setDisabled(index === 0).onClick(() => this.move(layout, module2, -1));
+        action("arrow-right", "\u53F3\u79FB\u4E00\u683C").setDisabled(index === layout.modules.length - 1).onClick(() => this.move(layout, module2, 1));
+        action("arrow-up", "\u4E0A\u79FB\u4E00\u884C").setDisabled(index - columns < 0).onClick(() => this.move(layout, module2, -columns));
+        action("arrow-down", "\u4E0B\u79FB\u4E00\u884C").setDisabled(index + columns >= layout.modules.length).onClick(() => this.move(layout, module2, columns));
         action("trash-2", "\u5220\u9664").setWarning().onClick(remove);
         action("columns-2", "\u8C03\u6574\u5BBD\u5EA6").onClick(resize);
         action(hidden ? "eye" : "eye-off", hidden ? "\u663E\u793A\u6A21\u5757" : "\u9690\u85CF\u6A21\u5757").onClick(toggleVisibility);
@@ -898,7 +902,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     const body = card.createDiv({ cls: "hb-module-body" });
     if (this.editing && (module2.kind === "markdown" || module2.kind === "bookshelf" || module2.kind === "assets" || module2.kind === "aiusage")) {
       const label = module2.queryKind === "tasks" ? "\u4EFB\u52A1\u6E05\u5355" : module2.queryKind === "dataview" ? "Dataview \u8868\u683C" : module2.kind === "markdown" ? "\u67E5\u8BE2" : "\u6570\u636E";
-      body.createEl("p", { text: `${label}\u6A21\u5757\u5DF2\u6DFB\u52A0\u3002\u53EF\u4F7F\u7528\u4E0A\u65B9\u6309\u94AE\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\uFF1B\u70B9\u201C\u5B8C\u6210\u7F16\u8F91\u201D\u540E\u518D\u9884\u89C8\u5185\u5BB9\u3002`, cls: "hb-muted" });
+      body.createEl("p", { text: `${label}\u6A21\u5757\u5DF2\u6DFB\u52A0\u3002\u53EF\u4F7F\u7528\u4E0A\u65B9\u6309\u94AE\u7F16\u8F91\u3001\u65B9\u5411\u79FB\u52A8\u6216\u5220\u9664\uFF1B\u70B9\u201C\u5B8C\u6210\u7F16\u8F91\u201D\u540E\u518D\u9884\u89C8\u5185\u5BB9\u3002`, cls: "hb-muted" });
       return;
     }
     if (module2.kind === "shortcuts") {

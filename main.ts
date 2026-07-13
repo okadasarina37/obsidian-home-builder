@@ -19,7 +19,7 @@ import {
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-const PLUGIN_VERSION = "0.4.2";
+const PLUGIN_VERSION = "0.4.3";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
@@ -788,7 +788,9 @@ class HomeBuilderView extends ItemView {
   private renderEditorBar(container: HTMLElement) {
     const bar = container.createDiv({ cls: "hb-editor-bar" });
     bar.createEl("strong", { text: "编辑模式" });
-    bar.createSpan({ text: "先添加模块；每张模块下方可编辑、上移、下移或删除。" });
+    bar.createSpan({ text: this.device() === "mobile"
+      ? "先添加模块；每张模块下方可编辑、上移、下移或删除。"
+      : "先添加模块；可拖动排序，也可用左右移动一格、上下一整行。" });
     for (const device of ["mobile", "tablet", "desktop"] as Device[]) {
       const button = new ButtonComponent(bar).setButtonText(device === "mobile" ? "手机" : device === "tablet" ? "Pad" : "电脑");
       if (this.device() === device) button.setClass("mod-cta");
@@ -966,10 +968,14 @@ class HomeBuilderView extends ItemView {
           button.buttonEl.setAttribute("aria-label", label);
           return button;
         };
+        const index = layout.modules.indexOf(module);
+        const columns = this.device() === "tablet" ? 2 : this.plugin.config.settings.gridColumns;
         action("pencil", "编辑").onClick(() => this.openModuleEditor(module));
         action("copy", "复制").onClick(duplicate);
-        action("arrow-up", "上移").setDisabled(layout.modules.indexOf(module) === 0).onClick(() => this.move(layout, module, -1));
-        action("arrow-down", "下移").setDisabled(layout.modules.indexOf(module) === layout.modules.length - 1).onClick(() => this.move(layout, module, 1));
+        action("arrow-left", "左移一格").setDisabled(index === 0).onClick(() => this.move(layout, module, -1));
+        action("arrow-right", "右移一格").setDisabled(index === layout.modules.length - 1).onClick(() => this.move(layout, module, 1));
+        action("arrow-up", "上移一行").setDisabled(index - columns < 0).onClick(() => this.move(layout, module, -columns));
+        action("arrow-down", "下移一行").setDisabled(index + columns >= layout.modules.length).onClick(() => this.move(layout, module, columns));
         action("trash-2", "删除").setWarning().onClick(remove);
         action("columns-2", "调整宽度").onClick(resize);
         action(hidden ? "eye" : "eye-off", hidden ? "显示模块" : "隐藏模块").onClick(toggleVisibility);
@@ -983,7 +989,7 @@ class HomeBuilderView extends ItemView {
     // rendering until the user leaves edit mode.
     if (this.editing && (module.kind === "markdown" || module.kind === "bookshelf" || module.kind === "assets" || module.kind === "aiusage")) {
       const label = module.queryKind === "tasks" ? "任务清单" : module.queryKind === "dataview" ? "Dataview 表格" : module.kind === "markdown" ? "查询" : "数据";
-      body.createEl("p", { text: `${label}模块已添加。可使用上方按钮编辑、上移、下移或删除；点“完成编辑”后再预览内容。`, cls: "hb-muted" });
+      body.createEl("p", { text: `${label}模块已添加。可使用上方按钮编辑、方向移动或删除；点“完成编辑”后再预览内容。`, cls: "hb-muted" });
       return;
     }
     if (module.kind === "shortcuts") {
