@@ -91,7 +91,12 @@
 .hb-module-picker-item small { margin-top: 5px; color: var(--text-muted); line-height: 1.35; }
 
 @media (max-width: 767px) {
-  .home-builder-view { padding-inline: 12px; background-attachment: scroll; }
+  .home-builder-view {
+    padding-inline: 12px;
+    padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important;
+    scroll-padding-bottom: calc(112px + env(safe-area-inset-bottom));
+    background-attachment: scroll;
+  }
   .hb-header { align-items: flex-start; flex-direction: column; }
   .hb-actions { width: 100%; flex-wrap: wrap; }
   .hb-actions > :last-child { flex: 1 1 220px; }
