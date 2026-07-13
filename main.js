@@ -26,6 +26,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
+var PLUGIN_VERSION = "0.3.15";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
@@ -531,6 +532,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     this.editing = false;
     this.selectedDevice = null;
     this.calendarOffsets = /* @__PURE__ */ new Map();
+    this.renderStage = "\u672A\u5F00\u59CB";
   }
   getViewType() {
     return VIEW_TYPE_HOME_BUILDER;
@@ -550,23 +552,26 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
   }
   async render() {
     var _a, _b;
+    this.renderStage = "\u6E05\u7A7A\u65E7\u9875\u9762";
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("home-builder-view");
+    this.renderStage = "\u5E94\u7528\u4E3B\u9898";
     const theme = this.plugin.config.theme;
     contentEl.style.setProperty("--hb-accent", theme.accent);
     contentEl.style.setProperty("--hb-card-opacity", String(theme.cardOpacity));
     contentEl.style.setProperty("--hb-columns", String(this.plugin.config.settings.gridColumns));
-    contentEl.removeClasses(["hb-bg-color", "hb-bg-image", "hb-bg-gradient"]);
+    contentEl.classList.remove("hb-bg-color", "hb-bg-image", "hb-bg-gradient");
     if (theme.backgroundType !== "none") {
       contentEl.addClass(`hb-bg-${theme.backgroundType}`);
       if (theme.backgroundType === "image") contentEl.style.backgroundImage = `linear-gradient(rgb(var(--background-primary-rgb) / .78), rgb(var(--background-primary-rgb) / .9)), url("${vaultImageUrl(this.app, theme.backgroundValue)}")`;
       else contentEl.style.background = theme.backgroundValue;
     }
+    this.renderStage = "\u9876\u90E8\u680F";
     const header = contentEl.createDiv({ cls: "hb-header" });
     const heading = header.createDiv({ cls: "hb-heading" });
     heading.createEl("h1", { text: this.plugin.config.pageName });
-    heading.createEl("span", { text: this.editing ? "\u7F16\u8F91\u4E2D" : "Home Builder", cls: "hb-status" });
+    heading.createEl("span", { text: `${this.editing ? "\u7F16\u8F91\u4E2D" : "Home Builder"} \xB7 v${PLUGIN_VERSION}`, cls: "hb-status" });
     const actions = header.createDiv({ cls: "hb-actions" });
     const pageSelect = actions.createEl("select", { cls: "hb-page-select", attr: { "aria-label": "\u5207\u6362\u4E3B\u9875" } });
     for (const page of this.plugin.listPages()) pageSelect.createEl("option", { text: page.name, value: page.id });
@@ -581,10 +586,14 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
       await this.render();
     });
     if (this.editing) {
+      this.renderStage = "\u6DFB\u52A0\u6A21\u5757\u533A";
       this.renderAddModuleCta(contentEl);
+      this.renderStage = "\u7F16\u8F91\u5DE5\u5177\u680F";
       this.renderEditorBar(contentEl);
     } else this.renderEditHint(contentEl);
+    this.renderStage = "\u6A2A\u5E45";
     this.renderBanner(contentEl);
+    this.renderStage = "\u6A21\u5757\u7F51\u683C";
     const grid = contentEl.createDiv({ cls: "hb-grid" });
     const layout = this.plugin.resolvedLayout(this.device());
     if (!layout.modules.length) {
@@ -597,6 +606,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     }
     for (const module2 of layout.modules) {
       if (this.editing || !((_a = module2.hiddenOn) == null ? void 0 : _a.includes(this.device()))) {
+        this.renderStage = `\u6A21\u5757\u201C${module2.title || "\u672A\u547D\u540D"}\u201D\uFF1A\u5F00\u59CB`;
         const childCount = grid.childElementCount;
         try {
           await this.renderModule(grid, module2, layout);
@@ -629,6 +639,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
         }
       }
     }
+    this.renderStage = "\u5B8C\u6210";
   }
   renderEditHint(container) {
     const hint = container.createDiv({ cls: "hb-edit-hint" });
@@ -656,7 +667,9 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     bar.createEl("strong", { text: "\u7F16\u8F91\u6A21\u5F0F" });
     bar.createSpan({ text: "\u5148\u6DFB\u52A0\u6A21\u5757\uFF1B\u6BCF\u5F20\u6A21\u5757\u4E0B\u65B9\u53EF\u7F16\u8F91\u3001\u4E0A\u79FB\u3001\u4E0B\u79FB\u6216\u5220\u9664\u3002" });
     for (const device of ["mobile", "tablet", "desktop"]) {
-      new import_obsidian.ButtonComponent(bar).setButtonText(device === "mobile" ? "\u624B\u673A" : device === "tablet" ? "Pad" : "\u7535\u8111").setClass(this.device() === device ? "mod-cta" : "").onClick(async () => {
+      const button = new import_obsidian.ButtonComponent(bar).setButtonText(device === "mobile" ? "\u624B\u673A" : device === "tablet" ? "Pad" : "\u7535\u8111");
+      if (this.device() === device) button.setClass("mod-cta");
+      button.onClick(async () => {
         this.selectedDevice = device;
         await this.render();
       });
@@ -728,7 +741,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
             (_a2 = cards.item(cards.length - 1)) == null ? void 0 : _a2.scrollIntoView({ behavior: "smooth", block: "start" });
           }, 50);
         } catch (error) {
-          new import_obsidian.Notice(`\u201C${label}\u201D\u5DF2\u4FDD\u5B58\uFF0C\u4F46\u7F16\u8F91\u5361\u7247\u663E\u793A\u5931\u8D25\uFF1A${String(error)}`, 1e4);
+          new import_obsidian.Notice(`\u201C${label}\u201D\u5DF2\u4FDD\u5B58\uFF0C\u4F46\u9875\u9762\u663E\u793A\u5931\u8D25\uFF08${this.renderStage}\uFF09\uFF1A${String(error)}`, 12e3);
         }
       };
       menu.appendChild(option);
@@ -751,6 +764,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
   }
   async renderModule(grid, module2, layout) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;
+    this.renderStage = `\u6A21\u5757\u201C${module2.title || "\u672A\u547D\u540D"}\u201D\uFF1A\u521B\u5EFA\u5361\u7247`;
     const hidden = (_a = module2.hiddenOn) == null ? void 0 : _a.includes(this.device());
     const card = grid.createDiv({ cls: "hb-module" });
     card.classList.add(`hb-span-${(_b = module2.span) != null ? _b : 1}`);
@@ -778,6 +792,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
     const titleRow = card.createDiv({ cls: "hb-module-title" });
     titleRow.createEl("h2", { text: module2.title || "\u672A\u547D\u540D\u6A21\u5757" });
     if (this.editing) {
+      this.renderStage = `\u6A21\u5757\u201C${module2.title || "\u672A\u547D\u540D"}\u201D\uFF1A\u64CD\u4F5C\u6309\u94AE`;
       const controls = titleRow.createDiv({ cls: "hb-module-controls" });
       const duplicate = async () => {
         const copy = clone(module2);
@@ -837,6 +852,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
         action(hidden ? "eye" : "eye-off", hidden ? "\u663E\u793A\u6A21\u5757" : "\u9690\u85CF\u6A21\u5757").onClick(toggleVisibility);
       }
     }
+    this.renderStage = `\u6A21\u5757\u201C${module2.title || "\u672A\u547D\u540D"}\u201D\uFF1A\u5185\u5BB9`;
     const body = card.createDiv({ cls: "hb-module-body" });
     if (this.editing && (module2.kind === "markdown" || module2.kind === "bookshelf" || module2.kind === "assets" || module2.kind === "aiusage")) {
       const label = module2.queryKind === "tasks" ? "\u4EFB\u52A1\u6E05\u5355" : module2.queryKind === "dataview" ? "Dataview \u8868\u683C" : module2.kind === "markdown" ? "\u67E5\u8BE2" : "\u6570\u636E";

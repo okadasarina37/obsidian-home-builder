@@ -17,6 +17,7 @@ import {
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
+const PLUGIN_VERSION = "0.3.15";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
@@ -608,6 +609,7 @@ class HomeBuilderView extends ItemView {
   private editing = false;
   private selectedDevice: Device | null = null;
   private calendarOffsets = new Map<string, number>();
+  private renderStage = "未开始";
 
   constructor(leaf: WorkspaceLeaf, private plugin: HomeBuilderPlugin) {
     super(leaf);
@@ -622,24 +624,27 @@ class HomeBuilderView extends ItemView {
   private device() { return this.selectedDevice ?? this.plugin.getDevice(); }
 
   async render() {
+    this.renderStage = "清空旧页面";
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("home-builder-view");
+    this.renderStage = "应用主题";
     const theme = this.plugin.config.theme;
     contentEl.style.setProperty("--hb-accent", theme.accent);
     contentEl.style.setProperty("--hb-card-opacity", String(theme.cardOpacity));
     contentEl.style.setProperty("--hb-columns", String(this.plugin.config.settings.gridColumns));
-    contentEl.removeClasses(["hb-bg-color", "hb-bg-image", "hb-bg-gradient"]);
+    contentEl.classList.remove("hb-bg-color", "hb-bg-image", "hb-bg-gradient");
     if (theme.backgroundType !== "none") {
       contentEl.addClass(`hb-bg-${theme.backgroundType}`);
       if (theme.backgroundType === "image") contentEl.style.backgroundImage = `linear-gradient(rgb(var(--background-primary-rgb) / .78), rgb(var(--background-primary-rgb) / .9)), url("${vaultImageUrl(this.app, theme.backgroundValue)}")`;
       else contentEl.style.background = theme.backgroundValue;
     }
 
+    this.renderStage = "顶部栏";
     const header = contentEl.createDiv({ cls: "hb-header" });
     const heading = header.createDiv({ cls: "hb-heading" });
     heading.createEl("h1", { text: this.plugin.config.pageName });
-    heading.createEl("span", { text: this.editing ? "编辑中" : "Home Builder", cls: "hb-status" });
+    heading.createEl("span", { text: `${this.editing ? "编辑中" : "Home Builder"} · v${PLUGIN_VERSION}`, cls: "hb-status" });
     const actions = header.createDiv({ cls: "hb-actions" });
     const pageSelect = actions.createEl("select", { cls: "hb-page-select", attr: { "aria-label": "切换主页" } });
     for (const page of this.plugin.listPages()) pageSelect.createEl("option", { text: page.name, value: page.id });
@@ -652,12 +657,16 @@ class HomeBuilderView extends ItemView {
       await this.render();
     });
     if (this.editing) {
+      this.renderStage = "添加模块区";
       this.renderAddModuleCta(contentEl);
+      this.renderStage = "编辑工具栏";
       this.renderEditorBar(contentEl);
     }
     else this.renderEditHint(contentEl);
+    this.renderStage = "横幅";
     this.renderBanner(contentEl);
 
+    this.renderStage = "模块网格";
     const grid = contentEl.createDiv({ cls: "hb-grid" });
     const layout = this.plugin.resolvedLayout(this.device());
     if (!layout.modules.length) {
@@ -670,6 +679,7 @@ class HomeBuilderView extends ItemView {
     }
     for (const module of layout.modules) {
       if (this.editing || !module.hiddenOn?.includes(this.device())) {
+        this.renderStage = `模块“${module.title || "未命名"}”：开始`;
         const childCount = grid.childElementCount;
         try {
           await this.renderModule(grid, module, layout);
@@ -702,6 +712,7 @@ class HomeBuilderView extends ItemView {
         }
       }
     }
+    this.renderStage = "完成";
   }
 
   private renderEditHint(container: HTMLElement) {
@@ -732,8 +743,9 @@ class HomeBuilderView extends ItemView {
     bar.createEl("strong", { text: "编辑模式" });
     bar.createSpan({ text: "先添加模块；每张模块下方可编辑、上移、下移或删除。" });
     for (const device of ["mobile", "tablet", "desktop"] as Device[]) {
-      new ButtonComponent(bar).setButtonText(device === "mobile" ? "手机" : device === "tablet" ? "Pad" : "电脑")
-        .setClass(this.device() === device ? "mod-cta" : "").onClick(async () => { this.selectedDevice = device; await this.render(); });
+      const button = new ButtonComponent(bar).setButtonText(device === "mobile" ? "手机" : device === "tablet" ? "Pad" : "电脑");
+      if (this.device() === device) button.setClass("mod-cta");
+      button.onClick(async () => { this.selectedDevice = device; await this.render(); });
     }
     new ButtonComponent(bar).setButtonText("同步布局").setTooltip("将当前编辑设备的布局复制给其他设备").onClick(() => new ConfirmModal(this.app, "同步当前布局？", "会用当前设备的模块和排序覆盖其他设备布局。", () => this.plugin.syncLayoutFrom(this.device())).open());
     new ButtonComponent(bar).setButtonText("主题").onClick(() => new ThemeModal(this.app, this.plugin).open());
@@ -800,7 +812,7 @@ class HomeBuilderView extends ItemView {
             cards.item(cards.length - 1)?.scrollIntoView({ behavior: "smooth", block: "start" });
           }, 50);
         } catch (error) {
-          new Notice(`“${label}”已保存，但编辑卡片显示失败：${String(error)}`, 10000);
+          new Notice(`“${label}”已保存，但页面显示失败（${this.renderStage}）：${String(error)}`, 12000);
         }
       };
       menu.appendChild(option);
@@ -824,6 +836,7 @@ class HomeBuilderView extends ItemView {
   }
 
   private async renderModule(grid: HTMLElement, module: HomeModule, layout: Layout) {
+    this.renderStage = `模块“${module.title || "未命名"}”：创建卡片`;
     const hidden = module.hiddenOn?.includes(this.device());
     const card = grid.createDiv({ cls: "hb-module" });
     card.classList.add(`hb-span-${module.span ?? 1}`);
@@ -847,6 +860,7 @@ class HomeBuilderView extends ItemView {
     const titleRow = card.createDiv({ cls: "hb-module-title" });
     titleRow.createEl("h2", { text: module.title || "未命名模块" });
     if (this.editing) {
+      this.renderStage = `模块“${module.title || "未命名"}”：操作按钮`;
       const controls = titleRow.createDiv({ cls: "hb-module-controls" });
       const duplicate = async () => {
         const copy = clone(module);
@@ -904,6 +918,7 @@ class HomeBuilderView extends ItemView {
         action(hidden ? "eye" : "eye-off", hidden ? "显示模块" : "隐藏模块").onClick(toggleVisibility);
       }
     }
+    this.renderStage = `模块“${module.title || "未命名"}”：内容`;
     const body = card.createDiv({ cls: "hb-module-body" });
     // On iOS, rendering a Tasks/Dataview block while its module is being
     // inserted can throw a WebKit SyntaxError and abort the add operation.
