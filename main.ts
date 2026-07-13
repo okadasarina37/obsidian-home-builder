@@ -20,11 +20,11 @@ import {
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-const PLUGIN_VERSION = "0.4.4";
+const PLUGIN_VERSION = "0.5.0";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
-type ModuleKind = "shortcuts" | "markdown" | "text" | "calendar" | "countdown" | "image" | "bookshelf" | "assets" | "aiusage" | "weather";
+type ModuleKind = "shortcuts" | "markdown" | "text" | "calendar" | "heatmap" | "countdown" | "image" | "bookshelf" | "assets" | "aiusage" | "weather";
 type Span = 1 | 2 | 3 | 4;
 
 interface Shortcut {
@@ -76,6 +76,11 @@ interface HomeModule {
     calendarWeekStart?: 0 | 1;
     calendarAccent?: string;
     calendarDayShape?: "rounded" | "circle" | "square";
+    heatmapPath?: string;
+    heatmapDateSource?: "auto" | "frontmatter" | "filename" | "created" | "modified";
+    heatmapWeeks?: 16 | 26 | 52;
+    heatmapWeekStart?: 0 | 1;
+    heatmapColor?: string;
     shelfPath?: string;
     assetPath?: string;
     usagePath?: string;
@@ -176,6 +181,7 @@ const MODULE_CHOICES: Array<[string, ModuleKind, string, HomeModule["queryKind"]
   ["自定义查询", "markdown", "粘贴 Tasks、Dataview 或 DataviewJS", "raw"],
   ["文字模块", "text", "标题、说明或提醒"],
   ["月历", "calendar", "链接到每日笔记"],
+  ["活动热力图", "heatmap", "按全库或文件夹统计每日笔记"],
   ["倒数日", "countdown", "显示距离某个日期的天数"],
   ["图片", "image", "展示库内图片或 URL"],
   ["阅读书架", "bookshelf", "读取正式书籍记录"],
@@ -853,6 +859,7 @@ class HomeBuilderView extends ItemView {
         else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
         if (kind === "text") created.text = "写一点提示或说明。";
         if (kind === "calendar") created.options = { dailyFolder: "02_日历/每日" };
+        if (kind === "heatmap") { created.span = 2; created.options = { heatmapPath: "", heatmapDateSource: "auto", heatmapWeeks: 16, heatmapWeekStart: 1, heatmapColor: "#22C55E" }; }
         if (kind === "countdown") created.options = { label: "倒数日", targetDate: new Date().toISOString().slice(0, 10) };
         if (kind === "image") created.options = { imagePath: "", imageAlt: "主页图片", imageFit: "cover" };
         if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
@@ -1023,6 +1030,8 @@ class HomeBuilderView extends ItemView {
       body.createEl("p", { text: module.text ?? "", cls: "hb-text" });
     } else if (module.kind === "calendar") {
       this.renderCalendar(body, module);
+    } else if (module.kind === "heatmap") {
+      this.renderHeatmap(body, module);
     } else if (module.kind === "countdown") {
       this.renderCountdown(body, module);
     } else if (module.kind === "image") {
@@ -1107,6 +1116,85 @@ class HomeBuilderView extends ItemView {
       if (date.getDay() === 0 || date.getDay() === 6) button.addClass("is-weekend");
       button.onclick = () => void this.app.workspace.openLinkText(path, this.plugin.config.configPath, true);
     }
+  }
+
+  private renderHeatmap(body: HTMLElement, module: HomeModule) {
+    const options = module.options ?? {};
+    const rawSourcePath = (options.heatmapPath ?? "").trim();
+    const sourcePath = rawSourcePath ? normalizePath(rawSourcePath).replace(/\/$/, "") : "";
+    const source = options.heatmapDateSource ?? "auto";
+    const weeks = options.heatmapWeeks ?? 16;
+    const weekStart = options.heatmapWeekStart ?? 1;
+    const counts = new Map<string, number>();
+    const files = this.app.vault.getMarkdownFiles().filter((file) => !sourcePath || file.path === sourcePath || file.path.startsWith(`${sourcePath}/`));
+    const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const valueDate = (value: unknown): string | undefined => {
+      if (value instanceof Date && !Number.isNaN(value.getTime())) return dateKey(value);
+      if (typeof value === "number") {
+        const date = new Date(value);
+        if (!Number.isNaN(date.getTime())) return dateKey(date);
+      }
+      if (typeof value === "string") {
+        const match = value.match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+      }
+      return undefined;
+    };
+    const fileDate = (file: TFile): string => {
+      const filenameDate = valueDate(file.basename);
+      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      const frontmatterDate = valueDate(frontmatter?.date ?? frontmatter?.created ?? frontmatter?.createdAt ?? frontmatter?.day);
+      if (source === "frontmatter") return frontmatterDate ?? dateKey(new Date(file.stat.ctime));
+      if (source === "filename") return filenameDate ?? dateKey(new Date(file.stat.ctime));
+      if (source === "created") return dateKey(new Date(file.stat.ctime));
+      if (source === "modified") return dateKey(new Date(file.stat.mtime));
+      return frontmatterDate ?? filenameDate ?? dateKey(new Date(file.stat.ctime));
+    };
+    for (const file of files) {
+      const key = fileDate(file);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayIndex = (today.getDay() - weekStart + 7) % 7;
+    const start = new Date(today); start.setDate(start.getDate() - todayIndex - (weeks - 1) * 7);
+    const visible: Array<{ date: Date; key: string; count: number; future: boolean }> = [];
+    for (let index = 0; index < weeks * 7; index++) {
+      const date = new Date(start); date.setDate(start.getDate() + index);
+      const key = dateKey(date);
+      visible.push({ date, key, count: counts.get(key) ?? 0, future: date > today });
+    }
+    const visibleCounts = visible.filter((item) => !item.future && item.count > 0);
+    const total = visibleCounts.reduce((sum, item) => sum + item.count, 0);
+    let streak = 0;
+    const cursor = new Date(today);
+    if (!(counts.get(dateKey(cursor)) ?? 0)) cursor.setDate(cursor.getDate() - 1);
+    while ((counts.get(dateKey(cursor)) ?? 0) > 0) { streak++; cursor.setDate(cursor.getDate() - 1); }
+    const summary = body.createDiv({ cls: "hb-heatmap-summary" });
+    for (const [value, label] of [[total, "笔记"], [visibleCounts.length, "活跃天"], [streak, "连续天"]] as Array<[number, string]>) {
+      const item = summary.createDiv();
+      item.createEl("strong", { text: String(value) });
+      item.createEl("span", { text: label });
+    }
+    const layout = body.createDiv({ cls: "hb-heatmap-layout" });
+    const labels = layout.createDiv({ cls: "hb-heatmap-weekdays" });
+    const weekdayLabels = weekStart === 1 ? ["一", "二", "三", "四", "五", "六", "日"] : ["日", "一", "二", "三", "四", "五", "六"];
+    for (const label of weekdayLabels) labels.createSpan({ text: label });
+    const scroller = layout.createDiv({ cls: "hb-heatmap-scroll" });
+    const grid = scroller.createDiv({ cls: "hb-heatmap-grid" });
+    grid.style.setProperty("--hb-heatmap-color", options.heatmapColor || "var(--hb-accent)");
+    const max = Math.max(1, ...visibleCounts.map((item) => item.count));
+    for (const item of visible) {
+      const cell = grid.createSpan({ cls: "hb-heatmap-cell" });
+      if (item.future) cell.addClass("is-future");
+      else if (item.count > 0) cell.addClass(`hb-heatmap-level-${Math.max(1, Math.ceil(item.count / max * 4))}`);
+      const description = `${item.key}：${item.count} 篇笔记`;
+      cell.setAttribute("title", description);
+      cell.setAttribute("role", "img");
+      cell.setAttribute("aria-label", description);
+    }
+    window.requestAnimationFrame(() => { scroller.scrollLeft = scroller.scrollWidth; });
+    body.createEl("small", { text: sourcePath ? `来源：${sourcePath}` : "来源：全部 Markdown 笔记", cls: "hb-heatmap-source" });
   }
 
   private async openTarget(target: string) {
@@ -1235,6 +1323,19 @@ class ModuleModal extends Modal {
         .addOption("square", "直角方块")
         .setValue(this.module.options?.calendarDayShape ?? "rounded")
         .onChange((value) => this.module.options!.calendarDayShape = value as NonNullable<HomeModule["options"]>["calendarDayShape"]));
+    } else if (this.module.kind === "heatmap") {
+      this.module.options ??= {};
+      new Setting(contentEl).setName("来源目录").setDesc("留空统计全库 Markdown 笔记；填写后只统计该文件夹及其子目录。")
+        .addText((text) => text.setPlaceholder("留空 = 全库").setValue(this.module.options?.heatmapPath ?? "").onChange((value) => this.module.options!.heatmapPath = value.trim()));
+      new Setting(contentEl).setName("选择目录").addButton((button) => button.setButtonText("浏览库内文件夹").onClick(() => new VaultPickerModal(this.appRef, "选择热力图来源目录", "folder", (path) => this.module.options!.heatmapPath = path).open()));
+      new Setting(contentEl).setName("日期依据").setDesc("自动优先读取 YAML date/created，其次识别文件名 YYYY-MM-DD，最后使用创建时间。")
+        .addDropdown((drop) => drop.addOption("auto", "自动识别（推荐）").addOption("frontmatter", "YAML 日期").addOption("filename", "文件名日期").addOption("created", "文件创建时间").addOption("modified", "最后修改时间")
+          .setValue(this.module.options?.heatmapDateSource ?? "auto").onChange((value) => this.module.options!.heatmapDateSource = value as NonNullable<HomeModule["options"]>["heatmapDateSource"]));
+      new Setting(contentEl).setName("显示周期").addDropdown((drop) => drop.addOption("16", "近 16 周").addOption("26", "近 26 周").addOption("52", "近 52 周")
+        .setValue(String(this.module.options?.heatmapWeeks ?? 16)).onChange((value) => this.module.options!.heatmapWeeks = Number(value) as 16 | 26 | 52));
+      new Setting(contentEl).setName("一周开始日").addDropdown((drop) => drop.addOption("1", "周一").addOption("0", "周日")
+        .setValue(String(this.module.options?.heatmapWeekStart ?? 1)).onChange((value) => this.module.options!.heatmapWeekStart = Number(value) as 0 | 1));
+      addColorControl(new Setting(contentEl).setName("热力颜色").setDesc("根据每天笔记数量自动分为四档深浅；右侧编号可复制。"), this.module.options?.heatmapColor ?? "#22C55E", (value) => this.module.options!.heatmapColor = value);
     } else if (this.module.kind === "countdown") {
       this.module.options ??= {};
       new Setting(contentEl).setName("说明").addText((text) => text.setValue(this.module.options?.label ?? "倒数日").onChange((value) => this.module.options!.label = value));

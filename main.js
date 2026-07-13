@@ -26,7 +26,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-var PLUGIN_VERSION = "0.4.4";
+var PLUGIN_VERSION = "0.5.0";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
@@ -64,6 +64,7 @@ var MODULE_CHOICES = [
   ["\u81EA\u5B9A\u4E49\u67E5\u8BE2", "markdown", "\u7C98\u8D34 Tasks\u3001Dataview \u6216 DataviewJS", "raw"],
   ["\u6587\u5B57\u6A21\u5757", "text", "\u6807\u9898\u3001\u8BF4\u660E\u6216\u63D0\u9192"],
   ["\u6708\u5386", "calendar", "\u94FE\u63A5\u5230\u6BCF\u65E5\u7B14\u8BB0"],
+  ["\u6D3B\u52A8\u70ED\u529B\u56FE", "heatmap", "\u6309\u5168\u5E93\u6216\u6587\u4EF6\u5939\u7EDF\u8BA1\u6BCF\u65E5\u7B14\u8BB0"],
   ["\u5012\u6570\u65E5", "countdown", "\u663E\u793A\u8DDD\u79BB\u67D0\u4E2A\u65E5\u671F\u7684\u5929\u6570"],
   ["\u56FE\u7247", "image", "\u5C55\u793A\u5E93\u5185\u56FE\u7247\u6216 URL"],
   ["\u9605\u8BFB\u4E66\u67B6", "bookshelf", "\u8BFB\u53D6\u6B63\u5F0F\u4E66\u7C4D\u8BB0\u5F55"],
@@ -764,6 +765,10 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
         } else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
         if (kind === "text") created.text = "\u5199\u4E00\u70B9\u63D0\u793A\u6216\u8BF4\u660E\u3002";
         if (kind === "calendar") created.options = { dailyFolder: "02_\u65E5\u5386/\u6BCF\u65E5" };
+        if (kind === "heatmap") {
+          created.span = 2;
+          created.options = { heatmapPath: "", heatmapDateSource: "auto", heatmapWeeks: 16, heatmapWeekStart: 1, heatmapColor: "#22C55E" };
+        }
         if (kind === "countdown") created.options = { label: "\u5012\u6570\u65E5", targetDate: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) };
         if (kind === "image") created.options = { imagePath: "", imageAlt: "\u4E3B\u9875\u56FE\u7247", imageFit: "cover" };
         if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
@@ -934,6 +939,8 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
       body.createEl("p", { text: (_m = module2.text) != null ? _m : "", cls: "hb-text" });
     } else if (module2.kind === "calendar") {
       this.renderCalendar(body, module2);
+    } else if (module2.kind === "heatmap") {
+      this.renderHeatmap(body, module2);
     } else if (module2.kind === "countdown") {
       this.renderCountdown(body, module2);
     } else if (module2.kind === "image") {
@@ -1038,6 +1045,93 @@ LIMIT 1
       button.onclick = () => void this.app.workspace.openLinkText(path, this.plugin.config.configPath, true);
     }
   }
+  renderHeatmap(body, module2) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+    const options = (_a = module2.options) != null ? _a : {};
+    const rawSourcePath = ((_b = options.heatmapPath) != null ? _b : "").trim();
+    const sourcePath = rawSourcePath ? (0, import_obsidian.normalizePath)(rawSourcePath).replace(/\/$/, "") : "";
+    const source = (_c = options.heatmapDateSource) != null ? _c : "auto";
+    const weeks = (_d = options.heatmapWeeks) != null ? _d : 16;
+    const weekStart = (_e = options.heatmapWeekStart) != null ? _e : 1;
+    const counts = /* @__PURE__ */ new Map();
+    const files = this.app.vault.getMarkdownFiles().filter((file) => !sourcePath || file.path === sourcePath || file.path.startsWith(`${sourcePath}/`));
+    const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const valueDate = (value) => {
+      if (value instanceof Date && !Number.isNaN(value.getTime())) return dateKey(value);
+      if (typeof value === "number") {
+        const date = new Date(value);
+        if (!Number.isNaN(date.getTime())) return dateKey(date);
+      }
+      if (typeof value === "string") {
+        const match = value.match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+      }
+      return void 0;
+    };
+    const fileDate = (file) => {
+      var _a2, _b2, _c2, _d2, _e2;
+      const filenameDate = valueDate(file.basename);
+      const frontmatter = (_a2 = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a2.frontmatter;
+      const frontmatterDate = valueDate((_d2 = (_c2 = (_b2 = frontmatter == null ? void 0 : frontmatter.date) != null ? _b2 : frontmatter == null ? void 0 : frontmatter.created) != null ? _c2 : frontmatter == null ? void 0 : frontmatter.createdAt) != null ? _d2 : frontmatter == null ? void 0 : frontmatter.day);
+      if (source === "frontmatter") return frontmatterDate != null ? frontmatterDate : dateKey(new Date(file.stat.ctime));
+      if (source === "filename") return filenameDate != null ? filenameDate : dateKey(new Date(file.stat.ctime));
+      if (source === "created") return dateKey(new Date(file.stat.ctime));
+      if (source === "modified") return dateKey(new Date(file.stat.mtime));
+      return (_e2 = frontmatterDate != null ? frontmatterDate : filenameDate) != null ? _e2 : dateKey(new Date(file.stat.ctime));
+    };
+    for (const file of files) {
+      const key = fileDate(file);
+      counts.set(key, ((_f = counts.get(key)) != null ? _f : 0) + 1);
+    }
+    const today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIndex = (today.getDay() - weekStart + 7) % 7;
+    const start = new Date(today);
+    start.setDate(start.getDate() - todayIndex - (weeks - 1) * 7);
+    const visible = [];
+    for (let index = 0; index < weeks * 7; index++) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const key = dateKey(date);
+      visible.push({ date, key, count: (_g = counts.get(key)) != null ? _g : 0, future: date > today });
+    }
+    const visibleCounts = visible.filter((item) => !item.future && item.count > 0);
+    const total = visibleCounts.reduce((sum, item) => sum + item.count, 0);
+    let streak = 0;
+    const cursor = new Date(today);
+    if (!((_h = counts.get(dateKey(cursor))) != null ? _h : 0)) cursor.setDate(cursor.getDate() - 1);
+    while (((_i = counts.get(dateKey(cursor))) != null ? _i : 0) > 0) {
+      streak++;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    const summary = body.createDiv({ cls: "hb-heatmap-summary" });
+    for (const [value, label] of [[total, "\u7B14\u8BB0"], [visibleCounts.length, "\u6D3B\u8DC3\u5929"], [streak, "\u8FDE\u7EED\u5929"]]) {
+      const item = summary.createDiv();
+      item.createEl("strong", { text: String(value) });
+      item.createEl("span", { text: label });
+    }
+    const layout = body.createDiv({ cls: "hb-heatmap-layout" });
+    const labels = layout.createDiv({ cls: "hb-heatmap-weekdays" });
+    const weekdayLabels = weekStart === 1 ? ["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u65E5"] : ["\u65E5", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D"];
+    for (const label of weekdayLabels) labels.createSpan({ text: label });
+    const scroller = layout.createDiv({ cls: "hb-heatmap-scroll" });
+    const grid = scroller.createDiv({ cls: "hb-heatmap-grid" });
+    grid.style.setProperty("--hb-heatmap-color", options.heatmapColor || "var(--hb-accent)");
+    const max = Math.max(1, ...visibleCounts.map((item) => item.count));
+    for (const item of visible) {
+      const cell = grid.createSpan({ cls: "hb-heatmap-cell" });
+      if (item.future) cell.addClass("is-future");
+      else if (item.count > 0) cell.addClass(`hb-heatmap-level-${Math.max(1, Math.ceil(item.count / max * 4))}`);
+      const description = `${item.key}\uFF1A${item.count} \u7BC7\u7B14\u8BB0`;
+      cell.setAttribute("title", description);
+      cell.setAttribute("role", "img");
+      cell.setAttribute("aria-label", description);
+    }
+    window.requestAnimationFrame(() => {
+      scroller.scrollLeft = scroller.scrollWidth;
+    });
+    body.createEl("small", { text: sourcePath ? `\u6765\u6E90\uFF1A${sourcePath}` : "\u6765\u6E90\uFF1A\u5168\u90E8 Markdown \u7B14\u8BB0", cls: "hb-heatmap-source" });
+  }
   async openTarget(target) {
     if (isExternalUrl(target)) {
       window.open(target, "_blank", "noopener");
@@ -1069,7 +1163,7 @@ var ModuleModal = class extends import_obsidian.Modal {
     this.onSave = onSave;
   }
   onOpen() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C;
     const { contentEl } = this;
     contentEl.addClass("hb-modal");
     contentEl.createEl("h2", { text: "\u7F16\u8F91\u6A21\u5757" });
@@ -1207,8 +1301,28 @@ var ModuleModal = class extends import_obsidian.Modal {
         var _a2, _b2;
         return drop.addOption("rounded", "\u5706\u89D2\u65B9\u5757").addOption("circle", "\u5706\u5F62").addOption("square", "\u76F4\u89D2\u65B9\u5757").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.calendarDayShape) != null ? _b2 : "rounded").onChange((value) => this.module.options.calendarDayShape = value);
       });
-    } else if (this.module.kind === "countdown") {
+    } else if (this.module.kind === "heatmap") {
       (_k = (_j = this.module).options) != null ? _k : _j.options = {};
+      new import_obsidian.Setting(contentEl).setName("\u6765\u6E90\u76EE\u5F55").setDesc("\u7559\u7A7A\u7EDF\u8BA1\u5168\u5E93 Markdown \u7B14\u8BB0\uFF1B\u586B\u5199\u540E\u53EA\u7EDF\u8BA1\u8BE5\u6587\u4EF6\u5939\u53CA\u5176\u5B50\u76EE\u5F55\u3002").addText((text) => {
+        var _a2, _b2;
+        return text.setPlaceholder("\u7559\u7A7A = \u5168\u5E93").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.heatmapPath) != null ? _b2 : "").onChange((value) => this.module.options.heatmapPath = value.trim());
+      });
+      new import_obsidian.Setting(contentEl).setName("\u9009\u62E9\u76EE\u5F55").addButton((button) => button.setButtonText("\u6D4F\u89C8\u5E93\u5185\u6587\u4EF6\u5939").onClick(() => new VaultPickerModal(this.appRef, "\u9009\u62E9\u70ED\u529B\u56FE\u6765\u6E90\u76EE\u5F55", "folder", (path) => this.module.options.heatmapPath = path).open()));
+      new import_obsidian.Setting(contentEl).setName("\u65E5\u671F\u4F9D\u636E").setDesc("\u81EA\u52A8\u4F18\u5148\u8BFB\u53D6 YAML date/created\uFF0C\u5176\u6B21\u8BC6\u522B\u6587\u4EF6\u540D YYYY-MM-DD\uFF0C\u6700\u540E\u4F7F\u7528\u521B\u5EFA\u65F6\u95F4\u3002").addDropdown((drop) => {
+        var _a2, _b2;
+        return drop.addOption("auto", "\u81EA\u52A8\u8BC6\u522B\uFF08\u63A8\u8350\uFF09").addOption("frontmatter", "YAML \u65E5\u671F").addOption("filename", "\u6587\u4EF6\u540D\u65E5\u671F").addOption("created", "\u6587\u4EF6\u521B\u5EFA\u65F6\u95F4").addOption("modified", "\u6700\u540E\u4FEE\u6539\u65F6\u95F4").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.heatmapDateSource) != null ? _b2 : "auto").onChange((value) => this.module.options.heatmapDateSource = value);
+      });
+      new import_obsidian.Setting(contentEl).setName("\u663E\u793A\u5468\u671F").addDropdown((drop) => {
+        var _a2, _b2;
+        return drop.addOption("16", "\u8FD1 16 \u5468").addOption("26", "\u8FD1 26 \u5468").addOption("52", "\u8FD1 52 \u5468").setValue(String((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.heatmapWeeks) != null ? _b2 : 16)).onChange((value) => this.module.options.heatmapWeeks = Number(value));
+      });
+      new import_obsidian.Setting(contentEl).setName("\u4E00\u5468\u5F00\u59CB\u65E5").addDropdown((drop) => {
+        var _a2, _b2;
+        return drop.addOption("1", "\u5468\u4E00").addOption("0", "\u5468\u65E5").setValue(String((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.heatmapWeekStart) != null ? _b2 : 1)).onChange((value) => this.module.options.heatmapWeekStart = Number(value));
+      });
+      addColorControl(new import_obsidian.Setting(contentEl).setName("\u70ED\u529B\u989C\u8272").setDesc("\u6839\u636E\u6BCF\u5929\u7B14\u8BB0\u6570\u91CF\u81EA\u52A8\u5206\u4E3A\u56DB\u6863\u6DF1\u6D45\uFF1B\u53F3\u4FA7\u7F16\u53F7\u53EF\u590D\u5236\u3002"), (_m = (_l = this.module.options) == null ? void 0 : _l.heatmapColor) != null ? _m : "#22C55E", (value) => this.module.options.heatmapColor = value);
+    } else if (this.module.kind === "countdown") {
+      (_o = (_n = this.module).options) != null ? _o : _n.options = {};
       new import_obsidian.Setting(contentEl).setName("\u8BF4\u660E").addText((text) => {
         var _a2, _b2;
         return text.setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.label) != null ? _b2 : "\u5012\u6570\u65E5").onChange((value) => this.module.options.label = value);
@@ -1218,7 +1332,7 @@ var ModuleModal = class extends import_obsidian.Modal {
         return text.setPlaceholder("2026-12-31").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.targetDate) != null ? _b2 : "").onChange((value) => this.module.options.targetDate = value.trim());
       });
     } else if (this.module.kind === "image") {
-      (_m = (_l = this.module).options) != null ? _m : _l.options = {};
+      (_q = (_p = this.module).options) != null ? _q : _p.options = {};
       new import_obsidian.Setting(contentEl).setName("\u56FE\u7247\u8DEF\u5F84\u6216 URL").addText((text) => {
         var _a2, _b2;
         return text.setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.imagePath) != null ? _b2 : "").onChange((value) => this.module.options.imagePath = value.trim());
@@ -1233,7 +1347,7 @@ var ModuleModal = class extends import_obsidian.Modal {
         return drop.addOption("cover", "\u94FA\u6EE1\u88C1\u5207").addOption("contain", "\u5B8C\u6574\u663E\u793A").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.imageFit) != null ? _b2 : "cover").onChange((value) => this.module.options.imageFit = value);
       });
     } else if (this.module.kind === "bookshelf" || this.module.kind === "assets" || this.module.kind === "aiusage") {
-      (_o = (_n = this.module).options) != null ? _o : _n.options = {};
+      (_s = (_r = this.module).options) != null ? _s : _r.options = {};
       const key = this.module.kind === "bookshelf" ? "shelfPath" : this.module.kind === "assets" ? "assetPath" : "usagePath";
       const fallback = this.module.kind === "bookshelf" ? "05_Books/epub-bookmarks" : this.module.kind === "assets" ? "09_\u6570\u5B57\u8D44\u4EA7/\u8D44\u4EA7" : "03_\u751F\u6D3B\u8BB0\u5F55/05_AI\u7528\u91CF";
       new import_obsidian.Setting(contentEl).setName("\u6765\u6E90\u76EE\u5F55").setDesc("\u8BE5\u6A21\u5757\u4ECD\u7531 Dataview \u539F\u751F\u6E32\u67D3\u3002").addText((text) => {
@@ -1242,7 +1356,7 @@ var ModuleModal = class extends import_obsidian.Modal {
       });
       new import_obsidian.Setting(contentEl).setName("\u9009\u62E9\u76EE\u5F55").addButton((button) => button.setButtonText("\u6D4F\u89C8\u5E93\u5185\u6587\u4EF6\u5939").onClick(() => new VaultPickerModal(this.appRef, "\u9009\u62E9\u6765\u6E90\u76EE\u5F55", "folder", (path) => this.module.options[key] = path).open()));
     } else if (this.module.kind === "weather") {
-      (_q = (_p = this.module).options) != null ? _q : _p.options = {};
+      (_u = (_t = this.module).options) != null ? _u : _t.options = {};
       new import_obsidian.Setting(contentEl).setName("\u5929\u6C14\u6765\u6E90").setDesc("\u81EA\u52A8\u6A21\u5F0F\u4EC5\u5728\u542F\u7528\u540E\u8BBF\u95EE Open-Meteo\uFF1B\u4E0D\u9700\u8981 API Key\u3002").addDropdown((drop) => {
         var _a2, _b2;
         return drop.addOption("manual", "\u624B\u52A8\u586B\u5199\uFF08\u4E0D\u8054\u7F51\uFF09").addOption("auto", "\u81EA\u52A8\u6293\u53D6\uFF08Open-Meteo\uFF09").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.weatherMode) != null ? _b2 : "manual").onChange((value) => this.module.options.weatherMode = value);
@@ -1276,10 +1390,10 @@ var ModuleModal = class extends import_obsidian.Modal {
         return text.setPlaceholder("25\xB0").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.weatherTemperature) != null ? _b2 : "").onChange((value) => this.module.options.weatherTemperature = value);
       });
     }
-    (_s = (_r = this.module).style) != null ? _s : _r.style = {};
+    (_w = (_v = this.module).style) != null ? _w : _v.style = {};
     contentEl.createEl("h3", { text: "\u6A21\u5757\u5916\u89C2" });
     const backgroundSetting = new import_obsidian.Setting(contentEl).setName("\u80CC\u666F\u8272").setDesc("\u900F\u660E\u4F1A\u53BB\u6389\u5F53\u524D\u6A21\u5757\u7684\u80CC\u666F\uFF1B\u53F3\u4FA7\u7F16\u53F7\u53EF\u590D\u5236\u3002");
-    const backgroundControl = addColorControl(backgroundSetting, (_u = (_t = this.module.style) == null ? void 0 : _t.background) != null ? _u : "#242134", (value) => this.module.style.background = value);
+    const backgroundControl = addColorControl(backgroundSetting, (_y = (_x = this.module.style) == null ? void 0 : _x.background) != null ? _y : "#242134", (value) => this.module.style.background = value);
     backgroundSetting.addButton((button) => button.setButtonText("\u65E0\u5361\u7247\u5E95").onClick(() => {
       this.module.style.background = "transparent";
       this.module.style.borderColor = "transparent";
@@ -1291,13 +1405,13 @@ var ModuleModal = class extends import_obsidian.Modal {
       backgroundControl.setText("");
     }));
     const textSetting = new import_obsidian.Setting(contentEl).setName("\u6587\u5B57\u989C\u8272").setDesc("\u53F3\u4FA7\u7F16\u53F7\u53EF\u590D\u5236\u3002");
-    const textControl = addColorControl(textSetting, (_w = (_v = this.module.style) == null ? void 0 : _v.textColor) != null ? _w : "#FFFFFF", (value) => this.module.style.textColor = value);
+    const textControl = addColorControl(textSetting, (_A = (_z = this.module.style) == null ? void 0 : _z.textColor) != null ? _A : "#FFFFFF", (value) => this.module.style.textColor = value);
     textSetting.addButton((button) => button.setButtonText("\u8DDF\u968F\u4E3B\u9898").onClick(() => {
       delete this.module.style.textColor;
       textControl.setText("");
     }));
     const borderSetting = new import_obsidian.Setting(contentEl).setName("\u8FB9\u6846\u989C\u8272").setDesc("\u53F3\u4FA7\u7F16\u53F7\u53EF\u590D\u5236\u3002");
-    const borderControl = addColorControl(borderSetting, (_y = (_x = this.module.style) == null ? void 0 : _x.borderColor) != null ? _y : "#4B465F", (value) => this.module.style.borderColor = value);
+    const borderControl = addColorControl(borderSetting, (_C = (_B = this.module.style) == null ? void 0 : _B.borderColor) != null ? _C : "#4B465F", (value) => this.module.style.borderColor = value);
     borderSetting.addButton((button) => button.setButtonText("\u8DDF\u968F\u4E3B\u9898").onClick(() => {
       delete this.module.style.borderColor;
       borderControl.setText("");
