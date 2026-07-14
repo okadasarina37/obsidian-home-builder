@@ -26,7 +26,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-var PLUGIN_VERSION = "0.5.1";
+var PLUGIN_VERSION = "0.5.2";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
@@ -817,7 +817,7 @@ var HomeBuilderView = class extends import_obsidian.ItemView {
         if (kind === "calendar") created.options = { dailyFolder: "02_\u65E5\u5386/\u6BCF\u65E5" };
         if (kind === "heatmap") {
           created.span = 2;
-          created.options = { heatmapPath: "", heatmapDateSource: "auto", heatmapWeeks: 16, heatmapWeekStart: 1, heatmapColor: "#22C55E" };
+          created.options = { heatmapPath: "", heatmapDateSource: "auto", heatmapWeeks: 16, heatmapWeekStart: 1, heatmapColor: "#22C55E", heatmapCellSize: "auto" };
         }
         if (kind === "countdown") created.options = { label: "\u5012\u6570\u65E5", targetDate: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) };
         if (kind === "image") created.options = { imagePath: "", imageAlt: "\u4E3B\u9875\u56FE\u7247", imageFit: "cover" };
@@ -1096,15 +1096,18 @@ LIMIT 1
     }
   }
   renderHeatmap(body, module2) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
     const options = (_a = module2.options) != null ? _a : {};
     const rawSourcePath = ((_b = options.heatmapPath) != null ? _b : "").trim();
     const sourcePath = rawSourcePath ? (0, import_obsidian.normalizePath)(rawSourcePath).replace(/\/$/, "") : "";
     const source = (_c = options.heatmapDateSource) != null ? _c : "auto";
     const minimumWeeks = (_d = options.heatmapWeeks) != null ? _d : 16;
     const availableWidth = body.clientWidth || Math.max(0, this.contentEl.clientWidth - 64) || Math.max(0, window.innerWidth - 64);
-    const weeks = Math.min(52, Math.max(minimumWeeks, Math.floor((availableWidth - 25 + 3) / 15)));
-    const weekStart = (_e = options.heatmapWeekStart) != null ? _e : 1;
+    const sizeMode = (_e = options.heatmapCellSize) != null ? _e : "auto";
+    const cellSize = sizeMode === "small" ? 10 : sizeMode === "standard" ? 12 : sizeMode === "large" ? 16 : this.device() === "mobile" ? 12 : this.device() === "tablet" ? 14 : 16;
+    const cellGap = Math.max(2, Math.round(cellSize / 4));
+    const weeks = Math.min(52, Math.max(minimumWeeks, Math.floor((availableWidth - 25 + cellGap) / (cellSize + cellGap))));
+    const weekStart = (_f = options.heatmapWeekStart) != null ? _f : 1;
     const counts = /* @__PURE__ */ new Map();
     const files = this.app.vault.getMarkdownFiles().filter((file) => !sourcePath || file.path === sourcePath || file.path.startsWith(`${sourcePath}/`));
     const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -1133,7 +1136,7 @@ LIMIT 1
     };
     for (const file of files) {
       const key = fileDate(file);
-      counts.set(key, ((_f = counts.get(key)) != null ? _f : 0) + 1);
+      counts.set(key, ((_g = counts.get(key)) != null ? _g : 0) + 1);
     }
     const today = /* @__PURE__ */ new Date();
     today.setHours(0, 0, 0, 0);
@@ -1145,14 +1148,14 @@ LIMIT 1
       const date = new Date(start);
       date.setDate(start.getDate() + index);
       const key = dateKey(date);
-      visible.push({ date, key, count: (_g = counts.get(key)) != null ? _g : 0, future: date > today });
+      visible.push({ date, key, count: (_h = counts.get(key)) != null ? _h : 0, future: date > today });
     }
     const visibleCounts = visible.filter((item) => !item.future && item.count > 0);
     const total = visibleCounts.reduce((sum, item) => sum + item.count, 0);
     let streak = 0;
     const cursor = new Date(today);
-    if (!((_h = counts.get(dateKey(cursor))) != null ? _h : 0)) cursor.setDate(cursor.getDate() - 1);
-    while (((_i = counts.get(dateKey(cursor))) != null ? _i : 0) > 0) {
+    if (!((_i = counts.get(dateKey(cursor))) != null ? _i : 0)) cursor.setDate(cursor.getDate() - 1);
+    while (((_j = counts.get(dateKey(cursor))) != null ? _j : 0) > 0) {
       streak++;
       cursor.setDate(cursor.getDate() - 1);
     }
@@ -1163,6 +1166,8 @@ LIMIT 1
       item.createEl("span", { text: label });
     }
     const layout = body.createDiv({ cls: "hb-heatmap-layout" });
+    layout.style.setProperty("--hb-heatmap-cell-size", `${cellSize}px`);
+    layout.style.setProperty("--hb-heatmap-cell-gap", `${cellGap}px`);
     const labels = layout.createDiv({ cls: "hb-heatmap-weekdays" });
     const weekdayLabels = weekStart === 1 ? ["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u65E5"] : ["\u65E5", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D"];
     for (const label of weekdayLabels) labels.createSpan({ text: label });
@@ -1368,6 +1373,10 @@ var ModuleModal = class extends import_obsidian.Modal {
       new import_obsidian.Setting(contentEl).setName("\u6700\u5C11\u663E\u793A\u5468\u671F").setDesc("\u6A2A\u5411\u7A7A\u95F4\u5145\u8DB3\u65F6\u4F1A\u81EA\u52A8\u589E\u52A0\u5468\u6570\u5E76\u6491\u6EE1\u5C45\u4E2D\uFF1B\u6700\u591A\u663E\u793A 52 \u5468\u3002").addDropdown((drop) => {
         var _a2, _b2;
         return drop.addOption("16", "\u81F3\u5C11\u8FD1 16 \u5468").addOption("26", "\u81F3\u5C11\u8FD1 26 \u5468").addOption("52", "\u56FA\u5B9A\u8FD1 52 \u5468").setValue(String((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.heatmapWeeks) != null ? _b2 : 16)).onChange((value) => this.module.options.heatmapWeeks = Number(value));
+      });
+      new import_obsidian.Setting(contentEl).setName("\u65B9\u5757\u5927\u5C0F").setDesc("\u81EA\u52A8\u6A21\u5F0F\u4F1A\u6309\u624B\u673A\u3001Pad\u3001\u7535\u8111\u9002\u5EA6\u8C03\u6574\uFF1B\u4E5F\u53EF\u624B\u52A8\u56FA\u5B9A\u5927\u5C0F\u3002").addDropdown((drop) => {
+        var _a2, _b2;
+        return drop.addOption("auto", "\u81EA\u52A8\uFF08\u63A8\u8350\uFF09").addOption("small", "\u5C0F \xB7 10px").addOption("standard", "\u6807\u51C6 \xB7 12px").addOption("large", "\u5927 \xB7 16px").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.heatmapCellSize) != null ? _b2 : "auto").onChange((value) => this.module.options.heatmapCellSize = value);
       });
       new import_obsidian.Setting(contentEl).setName("\u4E00\u5468\u5F00\u59CB\u65E5").addDropdown((drop) => {
         var _a2, _b2;

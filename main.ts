@@ -20,7 +20,7 @@ import {
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-const PLUGIN_VERSION = "0.5.1";
+const PLUGIN_VERSION = "0.5.2";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
@@ -81,6 +81,7 @@ interface HomeModule {
     heatmapWeeks?: 16 | 26 | 52;
     heatmapWeekStart?: 0 | 1;
     heatmapColor?: string;
+    heatmapCellSize?: "auto" | "small" | "standard" | "large";
     shelfPath?: string;
     assetPath?: string;
     usagePath?: string;
@@ -911,7 +912,7 @@ class HomeBuilderView extends ItemView {
         else if (kind === "markdown") created.markdown = "```tasks\nnot done\n```";
         if (kind === "text") created.text = "写一点提示或说明。";
         if (kind === "calendar") created.options = { dailyFolder: "02_日历/每日" };
-        if (kind === "heatmap") { created.span = 2; created.options = { heatmapPath: "", heatmapDateSource: "auto", heatmapWeeks: 16, heatmapWeekStart: 1, heatmapColor: "#22C55E" }; }
+        if (kind === "heatmap") { created.span = 2; created.options = { heatmapPath: "", heatmapDateSource: "auto", heatmapWeeks: 16, heatmapWeekStart: 1, heatmapColor: "#22C55E", heatmapCellSize: "auto" }; }
         if (kind === "countdown") created.options = { label: "倒数日", targetDate: new Date().toISOString().slice(0, 10) };
         if (kind === "image") created.options = { imagePath: "", imageAlt: "主页图片", imageFit: "cover" };
         if (kind === "bookshelf") created.options = { shelfPath: "05_Books/epub-bookmarks" };
@@ -1177,7 +1178,10 @@ class HomeBuilderView extends ItemView {
     const source = options.heatmapDateSource ?? "auto";
     const minimumWeeks = options.heatmapWeeks ?? 16;
     const availableWidth = body.clientWidth || Math.max(0, this.contentEl.clientWidth - 64) || Math.max(0, window.innerWidth - 64);
-    const weeks = Math.min(52, Math.max(minimumWeeks, Math.floor((availableWidth - 25 + 3) / 15)));
+    const sizeMode = options.heatmapCellSize ?? "auto";
+    const cellSize = sizeMode === "small" ? 10 : sizeMode === "standard" ? 12 : sizeMode === "large" ? 16 : this.device() === "mobile" ? 12 : this.device() === "tablet" ? 14 : 16;
+    const cellGap = Math.max(2, Math.round(cellSize / 4));
+    const weeks = Math.min(52, Math.max(minimumWeeks, Math.floor((availableWidth - 25 + cellGap) / (cellSize + cellGap))));
     const weekStart = options.heatmapWeekStart ?? 1;
     const counts = new Map<string, number>();
     const files = this.app.vault.getMarkdownFiles().filter((file) => !sourcePath || file.path === sourcePath || file.path.startsWith(`${sourcePath}/`));
@@ -1231,6 +1235,8 @@ class HomeBuilderView extends ItemView {
       item.createEl("span", { text: label });
     }
     const layout = body.createDiv({ cls: "hb-heatmap-layout" });
+    layout.style.setProperty("--hb-heatmap-cell-size", `${cellSize}px`);
+    layout.style.setProperty("--hb-heatmap-cell-gap", `${cellGap}px`);
     const labels = layout.createDiv({ cls: "hb-heatmap-weekdays" });
     const weekdayLabels = weekStart === 1 ? ["一", "二", "三", "四", "五", "六", "日"] : ["日", "一", "二", "三", "四", "五", "六"];
     for (const label of weekdayLabels) labels.createSpan({ text: label });
@@ -1388,6 +1394,9 @@ class ModuleModal extends Modal {
           .setValue(this.module.options?.heatmapDateSource ?? "auto").onChange((value) => this.module.options!.heatmapDateSource = value as NonNullable<HomeModule["options"]>["heatmapDateSource"]));
       new Setting(contentEl).setName("最少显示周期").setDesc("横向空间充足时会自动增加周数并撑满居中；最多显示 52 周。").addDropdown((drop) => drop.addOption("16", "至少近 16 周").addOption("26", "至少近 26 周").addOption("52", "固定近 52 周")
         .setValue(String(this.module.options?.heatmapWeeks ?? 16)).onChange((value) => this.module.options!.heatmapWeeks = Number(value) as 16 | 26 | 52));
+      new Setting(contentEl).setName("方块大小").setDesc("自动模式会按手机、Pad、电脑适度调整；也可手动固定大小。")
+        .addDropdown((drop) => drop.addOption("auto", "自动（推荐）").addOption("small", "小 · 10px").addOption("standard", "标准 · 12px").addOption("large", "大 · 16px")
+          .setValue(this.module.options?.heatmapCellSize ?? "auto").onChange((value) => this.module.options!.heatmapCellSize = value as NonNullable<HomeModule["options"]>["heatmapCellSize"]));
       new Setting(contentEl).setName("一周开始日").addDropdown((drop) => drop.addOption("1", "周一").addOption("0", "周日")
         .setValue(String(this.module.options?.heatmapWeekStart ?? 1)).onChange((value) => this.module.options!.heatmapWeekStart = Number(value) as 0 | 1));
       addColorControl(new Setting(contentEl).setName("热力颜色").setDesc("根据每天笔记数量自动分为四档深浅；右侧编号可复制。"), this.module.options?.heatmapColor ?? "#22C55E", (value) => this.module.options!.heatmapColor = value);
