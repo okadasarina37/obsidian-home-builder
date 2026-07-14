@@ -20,7 +20,7 @@ import {
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-const PLUGIN_VERSION = "0.5.0";
+const PLUGIN_VERSION = "0.5.1";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
@@ -372,6 +372,11 @@ export default class HomeBuilderPlugin extends Plugin {
     this.addRibbonIcon("layout-dashboard", "Open Home Builder", () => void this.openHome());
     this.addCommand({ id: "open-home", name: "Open Home Builder", callback: () => void this.openHome() });
     this.addCommand({ id: "new-home", name: "Create a new Home Builder page", callback: () => new NewHomeModal(this.app, this).open() });
+    this.registerObsidianProtocolHandler("home-builder", async (params) => {
+      const pageId = params.page;
+      if (pageId && pageId !== this.config.pageId) await this.switchPage(pageId);
+      await this.openHome();
+    });
     this.addSettingTab(new HomeBuilderSettings(this.app, this));
     this.registerEvent(this.app.vault.on("modify", (file) => this.scheduleRefresh(file)));
     this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
@@ -553,6 +558,24 @@ export default class HomeBuilderPlugin extends Plugin {
     new Notice("主页已删除。");
   }
 
+  async deletePage(id: string) {
+    if (this.listPages().length <= 1) {
+      new Notice("至少保留一张主页。");
+      return;
+    }
+    if (id === this.config.pageId) {
+      await this.deleteActivePage();
+      return;
+    }
+    const target = this.config.savedPages.find((page) => page.id === id);
+    if (!target) return;
+    this.config.savedPages = this.config.savedPages.filter((page) => page.id !== id);
+    this.config.pageOrder = this.config.pageOrder.filter((pageId) => pageId !== id);
+    this.normalizePageOrder();
+    await this.saveConfig(`删除主页：${target.name}`);
+    new Notice(`已删除主页：${target.name}`);
+  }
+
   async duplicateActivePage(name?: string) {
     const original = this.activeSnapshot();
     this.config.savedPages = [...this.config.savedPages.filter((page) => page.id !== original.id), original];
@@ -620,6 +643,34 @@ export default class HomeBuilderPlugin extends Plugin {
       new Notice(`Home Builder: 无法读取主页配置：${String(error)}`);
     }
     this.normalizePageOrder();
+    await this.writePageIndex(path.split("/").slice(0, -1).join("/"));
+  }
+
+  private async writePageIndex(folder: string) {
+    if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+    const indexPath = normalizePath(folder ? `${folder}/主页索引.md` : "主页索引.md");
+    const configPath = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
+    const lines = [
+      "# Home Builder 主页索引",
+      "",
+      "> [!info] 自动生成",
+      "> Home Builder 主页是插件视图，不是普通 Markdown 页面。布局与模块保存在下方 JSON 配置中。",
+      "",
+      `- 配置文件：\`${configPath}\``,
+      `- 主页数量：${this.listPages().length}`,
+      "",
+      "## 所有主页",
+      "",
+      ...this.listPages().map((page) => {
+        const name = page.name.replace(/[\[\]]/g, "");
+        const current = page.id === this.config.pageId ? "（当前）" : "";
+        return `- [打开「${name}」](obsidian://home-builder?page=${encodeURIComponent(page.id)}) ${current}`;
+      }),
+      "",
+      "> 此文件会在主页配置变化时自动更新，请不要在这里保存手工内容。",
+      "",
+    ];
+    await this.app.vault.adapter.write(indexPath, lines.join("\n"));
   }
 
   async saveConfig(reason = "编辑主页", refresh = true) {
@@ -634,6 +685,7 @@ export default class HomeBuilderPlugin extends Plugin {
     const serialized = JSON.stringify(this.config, null, 2);
     await this.app.vault.adapter.write(path, serialized);
     this.lastSavedConfig = serialized;
+    await this.writePageIndex(folder);
     await this.saveData({ configPath: path, layoutMode: this.config.layoutMode, theme: this.config.theme });
     if (refresh) await this.refreshViews();
   }
@@ -1123,7 +1175,9 @@ class HomeBuilderView extends ItemView {
     const rawSourcePath = (options.heatmapPath ?? "").trim();
     const sourcePath = rawSourcePath ? normalizePath(rawSourcePath).replace(/\/$/, "") : "";
     const source = options.heatmapDateSource ?? "auto";
-    const weeks = options.heatmapWeeks ?? 16;
+    const minimumWeeks = options.heatmapWeeks ?? 16;
+    const availableWidth = body.clientWidth || Math.max(0, this.contentEl.clientWidth - 64) || Math.max(0, window.innerWidth - 64);
+    const weeks = Math.min(52, Math.max(minimumWeeks, Math.floor((availableWidth - 25 + 3) / 15)));
     const weekStart = options.heatmapWeekStart ?? 1;
     const counts = new Map<string, number>();
     const files = this.app.vault.getMarkdownFiles().filter((file) => !sourcePath || file.path === sourcePath || file.path.startsWith(`${sourcePath}/`));
@@ -1182,6 +1236,7 @@ class HomeBuilderView extends ItemView {
     for (const label of weekdayLabels) labels.createSpan({ text: label });
     const scroller = layout.createDiv({ cls: "hb-heatmap-scroll" });
     const grid = scroller.createDiv({ cls: "hb-heatmap-grid" });
+    grid.style.setProperty("--hb-heatmap-weeks", String(weeks));
     grid.style.setProperty("--hb-heatmap-color", options.heatmapColor || "var(--hb-accent)");
     const max = Math.max(1, ...visibleCounts.map((item) => item.count));
     for (const item of visible) {
@@ -1331,7 +1386,7 @@ class ModuleModal extends Modal {
       new Setting(contentEl).setName("日期依据").setDesc("自动优先读取 YAML date/created，其次识别文件名 YYYY-MM-DD，最后使用创建时间。")
         .addDropdown((drop) => drop.addOption("auto", "自动识别（推荐）").addOption("frontmatter", "YAML 日期").addOption("filename", "文件名日期").addOption("created", "文件创建时间").addOption("modified", "最后修改时间")
           .setValue(this.module.options?.heatmapDateSource ?? "auto").onChange((value) => this.module.options!.heatmapDateSource = value as NonNullable<HomeModule["options"]>["heatmapDateSource"]));
-      new Setting(contentEl).setName("显示周期").addDropdown((drop) => drop.addOption("16", "近 16 周").addOption("26", "近 26 周").addOption("52", "近 52 周")
+      new Setting(contentEl).setName("最少显示周期").setDesc("横向空间充足时会自动增加周数并撑满居中；最多显示 52 周。").addDropdown((drop) => drop.addOption("16", "至少近 16 周").addOption("26", "至少近 26 周").addOption("52", "固定近 52 周")
         .setValue(String(this.module.options?.heatmapWeeks ?? 16)).onChange((value) => this.module.options!.heatmapWeeks = Number(value) as 16 | 26 | 52));
       new Setting(contentEl).setName("一周开始日").addDropdown((drop) => drop.addOption("1", "周一").addOption("0", "周日")
         .setValue(String(this.module.options?.heatmapWeekStart ?? 1)).onChange((value) => this.module.options!.heatmapWeekStart = Number(value) as 0 | 1));
@@ -1569,6 +1624,14 @@ class PageManagerModal extends Modal {
   onOpen() {
     this.contentEl.addClass("hb-modal");
     this.contentEl.createEl("h2", { text: "管理主页" });
+    this.contentEl.createEl("p", { text: "这里管理的是多张 Home Builder 主页。上下箭头用于调整它们在顶部切换列表中的顺序。", cls: "setting-item-description" });
+    const configPath = normalizePath(this.plugin.config.configPath || DEFAULT_CONFIG_PATH);
+    const configFolder = configPath.split("/").slice(0, -1).join("/");
+    const indexPath = normalizePath(configFolder ? `${configFolder}/主页索引.md` : "主页索引.md");
+    new Setting(this.contentEl).setName("主页存储位置").setDesc(`布局数据：${configPath}`).addButton((button) => button.setButtonText("打开主页索引").onClick(async () => {
+      await this.appRef.workspace.openLinkText(indexPath, configPath, true);
+      this.close();
+    }));
     new Setting(this.contentEl).setName("当前主页名称").addText((text) => text.setValue(this.plugin.config.pageName).onChange((value) => this.plugin.config.pageName = value)).addButton((button) => button.setButtonText("保存名称").onClick(async () => {
       await this.plugin.renamePage(this.plugin.config.pageName);
       new Notice("主页名称已更新。");
@@ -1580,15 +1643,18 @@ class PageManagerModal extends Modal {
     new Setting(this.contentEl).setName("复制当前主页").setDesc("复制布局、模块、主题和横幅到新主页。").addButton((button) => button.setButtonText("复制").onClick(async () => {
       await this.plugin.duplicateActivePage(); this.close();
     }));
-    this.contentEl.createEl("h3", { text: "主页顺序" });
+    this.contentEl.createEl("h3", { text: "多主页顺序" });
     const pages = this.plugin.listPages();
     pages.forEach((page, index) => {
-      new Setting(this.contentEl).setName(page.name).setDesc(page.id === this.plugin.config.pageId ? "当前主页" : "").addButton((button) => button.setIcon("arrow-up").setTooltip("上移").setDisabled(index === 0).onClick(async () => { await this.plugin.movePage(page.id, -1); this.close(); new PageManagerModal(this.appRef, this.plugin).open(); })).addButton((button) => button.setIcon("arrow-down").setTooltip("下移").setDisabled(index === pages.length - 1).onClick(async () => { await this.plugin.movePage(page.id, 1); this.close(); new PageManagerModal(this.appRef, this.plugin).open(); }));
+      const row = new Setting(this.contentEl).setName(page.name).setDesc(page.id === this.plugin.config.pageId ? "当前主页" : "");
+      row.settingEl.addClass("hb-page-order-row");
+      row.addButton((button) => button.setIcon("arrow-up").setTooltip("上移").setDisabled(index === 0).onClick(async () => { await this.plugin.movePage(page.id, -1); this.close(); new PageManagerModal(this.appRef, this.plugin).open(); }));
+      row.addButton((button) => button.setIcon("arrow-down").setTooltip("下移").setDisabled(index === pages.length - 1).onClick(async () => { await this.plugin.movePage(page.id, 1); this.close(); new PageManagerModal(this.appRef, this.plugin).open(); }));
+      row.addButton((button) => button.setIcon("trash-2").setTooltip(`删除 ${page.name}`).setWarning().setDisabled(pages.length <= 1).onClick(() => new ConfirmModal(this.appRef, `删除主页“${page.name}”？`, "此主页的布局、模块、主题和横幅设置将被删除。", async () => {
+        await this.plugin.deletePage(page.id);
+        this.close();
+      }).open()));
     });
-    new Setting(this.contentEl).setName("删除当前主页").setDesc("至少会保留一张主页。").addButton((button) => button.setButtonText("删除").setWarning().onClick(() => new ConfirmModal(this.appRef, "删除当前主页？", "此主页的布局、模块和主题设置将被删除。", async () => {
-      await this.plugin.deleteActivePage();
-      this.close();
-    }).open()));
   }
 }
 

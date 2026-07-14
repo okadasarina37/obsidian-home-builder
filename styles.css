@@ -119,7 +119,7 @@
 .hb-heatmap-layout { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 7px; align-items: start; }
 .hb-heatmap-weekdays { display: grid; grid-template-rows: repeat(7, 12px); gap: 3px; color: var(--text-muted); font-size: 9px; line-height: 12px; text-align: center; }
 .hb-heatmap-scroll { overflow-x: auto; overscroll-behavior-inline: contain; padding-bottom: 6px; scrollbar-width: thin; }
-.hb-heatmap-grid { display: grid; grid-template-rows: repeat(7, 12px); grid-auto-flow: column; grid-auto-columns: 12px; width: max-content; gap: 3px; }
+.hb-heatmap-grid { display: grid; grid-template-rows: repeat(7, 12px); grid-auto-flow: column; grid-auto-columns: 12px; width: max-content; min-width: 100%; justify-content: center; gap: 3px; }
 .hb-heatmap-cell { width: 12px; height: 12px; border-radius: 3px; background: color-mix(in srgb, var(--text-muted), transparent 82%); }
 .hb-heatmap-cell.is-future { opacity: .22; }
 .hb-heatmap-level-1 { background: color-mix(in srgb, var(--hb-heatmap-color), transparent 72%); }
@@ -138,6 +138,8 @@
 .hb-module-picker-item:active, .hb-module-picker-item:hover, .hb-module-picker-item:focus-visible { border-color: var(--hb-accent); background: color-mix(in srgb, var(--background-secondary), var(--hb-accent) 9%); outline: 2px solid transparent; }
 .hb-module-picker-item strong, .hb-module-picker-item small { display: block; }
 .hb-module-picker-item small { margin-top: 5px; color: var(--text-muted); line-height: 1.35; }
+.hb-page-order-row .setting-item-control { flex-wrap: nowrap !important; }
+.hb-page-order-row .setting-item-control button { flex: 0 0 44px !important; width: 44px !important; min-width: 44px !important; min-height: 44px; padding: 4px; }
 .hb-mobile-bottom-spacer { display: none; }
 
 @media (max-width: 767px) {

@@ -26,7 +26,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-var PLUGIN_VERSION = "0.5.0";
+var PLUGIN_VERSION = "0.5.1";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
@@ -286,6 +286,11 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     this.addRibbonIcon("layout-dashboard", "Open Home Builder", () => void this.openHome());
     this.addCommand({ id: "open-home", name: "Open Home Builder", callback: () => void this.openHome() });
     this.addCommand({ id: "new-home", name: "Create a new Home Builder page", callback: () => new NewHomeModal(this.app, this).open() });
+    this.registerObsidianProtocolHandler("home-builder", async (params) => {
+      const pageId = params.page;
+      if (pageId && pageId !== this.config.pageId) await this.switchPage(pageId);
+      await this.openHome();
+    });
     this.addSettingTab(new HomeBuilderSettings(this.app, this));
     this.registerEvent(this.app.vault.on("modify", (file) => this.scheduleRefresh(file)));
     this.registerEvent(this.app.vault.on("create", () => this.scheduleRefresh()));
@@ -454,6 +459,23 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     await this.saveConfig();
     new import_obsidian.Notice("\u4E3B\u9875\u5DF2\u5220\u9664\u3002");
   }
+  async deletePage(id) {
+    if (this.listPages().length <= 1) {
+      new import_obsidian.Notice("\u81F3\u5C11\u4FDD\u7559\u4E00\u5F20\u4E3B\u9875\u3002");
+      return;
+    }
+    if (id === this.config.pageId) {
+      await this.deleteActivePage();
+      return;
+    }
+    const target = this.config.savedPages.find((page) => page.id === id);
+    if (!target) return;
+    this.config.savedPages = this.config.savedPages.filter((page) => page.id !== id);
+    this.config.pageOrder = this.config.pageOrder.filter((pageId) => pageId !== id);
+    this.normalizePageOrder();
+    await this.saveConfig(`\u5220\u9664\u4E3B\u9875\uFF1A${target.name}`);
+    new import_obsidian.Notice(`\u5DF2\u5220\u9664\u4E3B\u9875\uFF1A${target.name}`);
+  }
   async duplicateActivePage(name) {
     const original = this.activeSnapshot();
     this.config.savedPages = [...this.config.savedPages.filter((page) => page.id !== original.id), original];
@@ -521,6 +543,33 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
       new import_obsidian.Notice(`Home Builder: \u65E0\u6CD5\u8BFB\u53D6\u4E3B\u9875\u914D\u7F6E\uFF1A${String(error)}`);
     }
     this.normalizePageOrder();
+    await this.writePageIndex(path.split("/").slice(0, -1).join("/"));
+  }
+  async writePageIndex(folder) {
+    if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+    const indexPath = (0, import_obsidian.normalizePath)(folder ? `${folder}/\u4E3B\u9875\u7D22\u5F15.md` : "\u4E3B\u9875\u7D22\u5F15.md");
+    const configPath = (0, import_obsidian.normalizePath)(this.config.configPath || DEFAULT_CONFIG_PATH);
+    const lines = [
+      "# Home Builder \u4E3B\u9875\u7D22\u5F15",
+      "",
+      "> [!info] \u81EA\u52A8\u751F\u6210",
+      "> Home Builder \u4E3B\u9875\u662F\u63D2\u4EF6\u89C6\u56FE\uFF0C\u4E0D\u662F\u666E\u901A Markdown \u9875\u9762\u3002\u5E03\u5C40\u4E0E\u6A21\u5757\u4FDD\u5B58\u5728\u4E0B\u65B9 JSON \u914D\u7F6E\u4E2D\u3002",
+      "",
+      `- \u914D\u7F6E\u6587\u4EF6\uFF1A\`${configPath}\``,
+      `- \u4E3B\u9875\u6570\u91CF\uFF1A${this.listPages().length}`,
+      "",
+      "## \u6240\u6709\u4E3B\u9875",
+      "",
+      ...this.listPages().map((page) => {
+        const name = page.name.replace(/[\[\]]/g, "");
+        const current = page.id === this.config.pageId ? "\uFF08\u5F53\u524D\uFF09" : "";
+        return `- [\u6253\u5F00\u300C${name}\u300D](obsidian://home-builder?page=${encodeURIComponent(page.id)}) ${current}`;
+      }),
+      "",
+      "> \u6B64\u6587\u4EF6\u4F1A\u5728\u4E3B\u9875\u914D\u7F6E\u53D8\u5316\u65F6\u81EA\u52A8\u66F4\u65B0\uFF0C\u8BF7\u4E0D\u8981\u5728\u8FD9\u91CC\u4FDD\u5B58\u624B\u5DE5\u5185\u5BB9\u3002",
+      ""
+    ];
+    await this.app.vault.adapter.write(indexPath, lines.join("\n"));
   }
   async saveConfig(reason = "\u7F16\u8F91\u4E3B\u9875", refresh = true) {
     var _a;
@@ -535,6 +584,7 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     const serialized = JSON.stringify(this.config, null, 2);
     await this.app.vault.adapter.write(path, serialized);
     this.lastSavedConfig = serialized;
+    await this.writePageIndex(folder);
     await this.saveData({ configPath: path, layoutMode: this.config.layoutMode, theme: this.config.theme });
     if (refresh) await this.refreshViews();
   }
@@ -1051,7 +1101,9 @@ LIMIT 1
     const rawSourcePath = ((_b = options.heatmapPath) != null ? _b : "").trim();
     const sourcePath = rawSourcePath ? (0, import_obsidian.normalizePath)(rawSourcePath).replace(/\/$/, "") : "";
     const source = (_c = options.heatmapDateSource) != null ? _c : "auto";
-    const weeks = (_d = options.heatmapWeeks) != null ? _d : 16;
+    const minimumWeeks = (_d = options.heatmapWeeks) != null ? _d : 16;
+    const availableWidth = body.clientWidth || Math.max(0, this.contentEl.clientWidth - 64) || Math.max(0, window.innerWidth - 64);
+    const weeks = Math.min(52, Math.max(minimumWeeks, Math.floor((availableWidth - 25 + 3) / 15)));
     const weekStart = (_e = options.heatmapWeekStart) != null ? _e : 1;
     const counts = /* @__PURE__ */ new Map();
     const files = this.app.vault.getMarkdownFiles().filter((file) => !sourcePath || file.path === sourcePath || file.path.startsWith(`${sourcePath}/`));
@@ -1116,6 +1168,7 @@ LIMIT 1
     for (const label of weekdayLabels) labels.createSpan({ text: label });
     const scroller = layout.createDiv({ cls: "hb-heatmap-scroll" });
     const grid = scroller.createDiv({ cls: "hb-heatmap-grid" });
+    grid.style.setProperty("--hb-heatmap-weeks", String(weeks));
     grid.style.setProperty("--hb-heatmap-color", options.heatmapColor || "var(--hb-accent)");
     const max = Math.max(1, ...visibleCounts.map((item) => item.count));
     for (const item of visible) {
@@ -1312,9 +1365,9 @@ var ModuleModal = class extends import_obsidian.Modal {
         var _a2, _b2;
         return drop.addOption("auto", "\u81EA\u52A8\u8BC6\u522B\uFF08\u63A8\u8350\uFF09").addOption("frontmatter", "YAML \u65E5\u671F").addOption("filename", "\u6587\u4EF6\u540D\u65E5\u671F").addOption("created", "\u6587\u4EF6\u521B\u5EFA\u65F6\u95F4").addOption("modified", "\u6700\u540E\u4FEE\u6539\u65F6\u95F4").setValue((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.heatmapDateSource) != null ? _b2 : "auto").onChange((value) => this.module.options.heatmapDateSource = value);
       });
-      new import_obsidian.Setting(contentEl).setName("\u663E\u793A\u5468\u671F").addDropdown((drop) => {
+      new import_obsidian.Setting(contentEl).setName("\u6700\u5C11\u663E\u793A\u5468\u671F").setDesc("\u6A2A\u5411\u7A7A\u95F4\u5145\u8DB3\u65F6\u4F1A\u81EA\u52A8\u589E\u52A0\u5468\u6570\u5E76\u6491\u6EE1\u5C45\u4E2D\uFF1B\u6700\u591A\u663E\u793A 52 \u5468\u3002").addDropdown((drop) => {
         var _a2, _b2;
-        return drop.addOption("16", "\u8FD1 16 \u5468").addOption("26", "\u8FD1 26 \u5468").addOption("52", "\u8FD1 52 \u5468").setValue(String((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.heatmapWeeks) != null ? _b2 : 16)).onChange((value) => this.module.options.heatmapWeeks = Number(value));
+        return drop.addOption("16", "\u81F3\u5C11\u8FD1 16 \u5468").addOption("26", "\u81F3\u5C11\u8FD1 26 \u5468").addOption("52", "\u56FA\u5B9A\u8FD1 52 \u5468").setValue(String((_b2 = (_a2 = this.module.options) == null ? void 0 : _a2.heatmapWeeks) != null ? _b2 : 16)).onChange((value) => this.module.options.heatmapWeeks = Number(value));
       });
       new import_obsidian.Setting(contentEl).setName("\u4E00\u5468\u5F00\u59CB\u65E5").addDropdown((drop) => {
         var _a2, _b2;
@@ -1605,6 +1658,14 @@ var PageManagerModal = class _PageManagerModal extends import_obsidian.Modal {
   onOpen() {
     this.contentEl.addClass("hb-modal");
     this.contentEl.createEl("h2", { text: "\u7BA1\u7406\u4E3B\u9875" });
+    this.contentEl.createEl("p", { text: "\u8FD9\u91CC\u7BA1\u7406\u7684\u662F\u591A\u5F20 Home Builder \u4E3B\u9875\u3002\u4E0A\u4E0B\u7BAD\u5934\u7528\u4E8E\u8C03\u6574\u5B83\u4EEC\u5728\u9876\u90E8\u5207\u6362\u5217\u8868\u4E2D\u7684\u987A\u5E8F\u3002", cls: "setting-item-description" });
+    const configPath = (0, import_obsidian.normalizePath)(this.plugin.config.configPath || DEFAULT_CONFIG_PATH);
+    const configFolder = configPath.split("/").slice(0, -1).join("/");
+    const indexPath = (0, import_obsidian.normalizePath)(configFolder ? `${configFolder}/\u4E3B\u9875\u7D22\u5F15.md` : "\u4E3B\u9875\u7D22\u5F15.md");
+    new import_obsidian.Setting(this.contentEl).setName("\u4E3B\u9875\u5B58\u50A8\u4F4D\u7F6E").setDesc(`\u5E03\u5C40\u6570\u636E\uFF1A${configPath}`).addButton((button) => button.setButtonText("\u6253\u5F00\u4E3B\u9875\u7D22\u5F15").onClick(async () => {
+      await this.appRef.workspace.openLinkText(indexPath, configPath, true);
+      this.close();
+    }));
     new import_obsidian.Setting(this.contentEl).setName("\u5F53\u524D\u4E3B\u9875\u540D\u79F0").addText((text) => text.setValue(this.plugin.config.pageName).onChange((value) => this.plugin.config.pageName = value)).addButton((button) => button.setButtonText("\u4FDD\u5B58\u540D\u79F0").onClick(async () => {
       await this.plugin.renamePage(this.plugin.config.pageName);
       new import_obsidian.Notice("\u4E3B\u9875\u540D\u79F0\u5DF2\u66F4\u65B0\u3002");
@@ -1617,23 +1678,26 @@ var PageManagerModal = class _PageManagerModal extends import_obsidian.Modal {
       await this.plugin.duplicateActivePage();
       this.close();
     }));
-    this.contentEl.createEl("h3", { text: "\u4E3B\u9875\u987A\u5E8F" });
+    this.contentEl.createEl("h3", { text: "\u591A\u4E3B\u9875\u987A\u5E8F" });
     const pages = this.plugin.listPages();
     pages.forEach((page, index) => {
-      new import_obsidian.Setting(this.contentEl).setName(page.name).setDesc(page.id === this.plugin.config.pageId ? "\u5F53\u524D\u4E3B\u9875" : "").addButton((button) => button.setIcon("arrow-up").setTooltip("\u4E0A\u79FB").setDisabled(index === 0).onClick(async () => {
+      const row = new import_obsidian.Setting(this.contentEl).setName(page.name).setDesc(page.id === this.plugin.config.pageId ? "\u5F53\u524D\u4E3B\u9875" : "");
+      row.settingEl.addClass("hb-page-order-row");
+      row.addButton((button) => button.setIcon("arrow-up").setTooltip("\u4E0A\u79FB").setDisabled(index === 0).onClick(async () => {
         await this.plugin.movePage(page.id, -1);
         this.close();
         new _PageManagerModal(this.appRef, this.plugin).open();
-      })).addButton((button) => button.setIcon("arrow-down").setTooltip("\u4E0B\u79FB").setDisabled(index === pages.length - 1).onClick(async () => {
+      }));
+      row.addButton((button) => button.setIcon("arrow-down").setTooltip("\u4E0B\u79FB").setDisabled(index === pages.length - 1).onClick(async () => {
         await this.plugin.movePage(page.id, 1);
         this.close();
         new _PageManagerModal(this.appRef, this.plugin).open();
       }));
+      row.addButton((button) => button.setIcon("trash-2").setTooltip(`\u5220\u9664 ${page.name}`).setWarning().setDisabled(pages.length <= 1).onClick(() => new ConfirmModal(this.appRef, `\u5220\u9664\u4E3B\u9875\u201C${page.name}\u201D\uFF1F`, "\u6B64\u4E3B\u9875\u7684\u5E03\u5C40\u3001\u6A21\u5757\u3001\u4E3B\u9898\u548C\u6A2A\u5E45\u8BBE\u7F6E\u5C06\u88AB\u5220\u9664\u3002", async () => {
+        await this.plugin.deletePage(page.id);
+        this.close();
+      }).open()));
     });
-    new import_obsidian.Setting(this.contentEl).setName("\u5220\u9664\u5F53\u524D\u4E3B\u9875").setDesc("\u81F3\u5C11\u4F1A\u4FDD\u7559\u4E00\u5F20\u4E3B\u9875\u3002").addButton((button) => button.setButtonText("\u5220\u9664").setWarning().onClick(() => new ConfirmModal(this.appRef, "\u5220\u9664\u5F53\u524D\u4E3B\u9875\uFF1F", "\u6B64\u4E3B\u9875\u7684\u5E03\u5C40\u3001\u6A21\u5757\u548C\u4E3B\u9898\u8BBE\u7F6E\u5C06\u88AB\u5220\u9664\u3002", async () => {
-      await this.plugin.deleteActivePage();
-      this.close();
-    }).open()));
   }
 };
 var TemplateModal = class extends import_obsidian.Modal {
