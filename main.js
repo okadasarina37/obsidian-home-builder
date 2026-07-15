@@ -26,7 +26,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 var DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-var PLUGIN_VERSION = "0.5.2";
+var PLUGIN_VERSION = "0.5.4";
 var newId = () => `hb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var clone = (value) => JSON.parse(JSON.stringify(value));
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
@@ -213,7 +213,15 @@ function defaultConfig() {
     savedPages: [],
     theme: { backgroundType: "none", backgroundValue: "", accent: "#7c3aed", cardOpacity: 0.88 },
     banner: { enabled: false, imagePath: "", title: "", subtitle: "", alt: "\u4E3B\u9875\u6A2A\u5E45\u56FE\u7247", height: 220, overlay: 0.42, rounded: true },
-    settings: { openOnStartup: false, startupPageId: "", gridColumns: 2, tabletGridColumns: "auto" },
+    settings: {
+      openOnStartup: false,
+      startupPageId: "",
+      mobileStartupPageId: "",
+      tabletStartupPageId: "",
+      desktopStartupPageId: "",
+      gridColumns: 2,
+      tabletGridColumns: "auto"
+    },
     history: [],
     layouts: {
       mobile: { modules: starterModules() },
@@ -311,7 +319,8 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     this.app.workspace.revealLeaf(leaf);
   }
   async openConfiguredStartupPage() {
-    const id = this.config.settings.startupPageId;
+    const device = this.getDevice();
+    const id = (device === "mobile" ? this.config.settings.mobileStartupPageId : device === "tablet" ? this.config.settings.tabletStartupPageId : this.config.settings.desktopStartupPageId) || this.config.settings.startupPageId;
     if (id && id !== this.config.pageId && this.config.savedPages.some((page) => page.id === id)) await this.switchPage(id);
     await this.openHome();
   }
@@ -1819,11 +1828,15 @@ var HomeBuilderSettings = class extends import_obsidian.PluginSettingTab {
     });
     new import_obsidian.Setting(containerEl).setName("\u684C\u9762\u7F51\u683C\u5217\u6570").setDesc("\u624B\u673A\u59CB\u7EC8\u5355\u5217\uFF1B\u7535\u8111\u53EF\u9009 2\u30013 \u6216 4 \u5217\u3002").addDropdown((drop) => drop.addOption("2", "2 \u5217").addOption("3", "3 \u5217").addOption("4", "4 \u5217").setValue(String(this.plugin.config.settings.gridColumns)).onChange((value) => this.plugin.config.settings.gridColumns = Number(value)));
     new import_obsidian.Setting(containerEl).setName("\u542F\u52A8\u65F6\u6253\u5F00 Home Builder").setDesc("\u53EF\u9009\u3002\u5F00\u542F\u540E\u4F1A\u5728 Obsidian \u5E03\u5C40\u5C31\u7EEA\u65F6\u6253\u5F00\u6307\u5B9A\u4E3B\u9875\uFF1B\u4E0D\u4F1A\u4FEE\u6539 Homepage \u63D2\u4EF6\u7684\u914D\u7F6E\u3002").addToggle((toggle) => toggle.setValue(this.plugin.config.settings.openOnStartup).onChange((value) => this.plugin.config.settings.openOnStartup = value));
-    new import_obsidian.Setting(containerEl).setName("\u542F\u52A8\u4E3B\u9875").setDesc("\u4EC5\u5728\u5F00\u542F\u542F\u52A8\u4E3B\u9875\u540E\u751F\u6548\u3002").addDropdown((drop) => {
+    const addStartupPageOptions = (drop) => {
       drop.addOption("", "\u5F53\u524D\u4E3B\u9875");
       for (const page of this.plugin.listPages()) drop.addOption(page.id, page.name);
-      return drop.setValue(this.plugin.config.settings.startupPageId).onChange((value) => this.plugin.config.settings.startupPageId = value);
-    });
+      return drop;
+    };
+    new import_obsidian.Setting(containerEl).setName("\u7EDF\u4E00\u542F\u52A8\u4E3B\u9875").setDesc("\u6240\u6709\u8BBE\u5907\u90FD\u672A\u5355\u72EC\u9009\u62E9\u65F6\u4F7F\u7528\u3002").addDropdown((drop) => addStartupPageOptions(drop).setValue(this.plugin.config.settings.startupPageId).onChange((value) => this.plugin.config.settings.startupPageId = value));
+    new import_obsidian.Setting(containerEl).setName("\u624B\u673A\u542F\u52A8\u4E3B\u9875").setDesc("\u7559\u7A7A\u65F6\u4F7F\u7528\u7EDF\u4E00\u542F\u52A8\u4E3B\u9875\u3002").addDropdown((drop) => addStartupPageOptions(drop).setValue(this.plugin.config.settings.mobileStartupPageId).onChange((value) => this.plugin.config.settings.mobileStartupPageId = value));
+    new import_obsidian.Setting(containerEl).setName("Pad \u542F\u52A8\u4E3B\u9875").setDesc("\u7559\u7A7A\u65F6\u4F7F\u7528\u7EDF\u4E00\u542F\u52A8\u4E3B\u9875\u3002").addDropdown((drop) => addStartupPageOptions(drop).setValue(this.plugin.config.settings.tabletStartupPageId).onChange((value) => this.plugin.config.settings.tabletStartupPageId = value));
+    new import_obsidian.Setting(containerEl).setName("\u7535\u8111\u542F\u52A8\u4E3B\u9875").setDesc("\u7559\u7A7A\u65F6\u4F7F\u7528\u7EDF\u4E00\u542F\u52A8\u4E3B\u9875\u3002").addDropdown((drop) => addStartupPageOptions(drop).setValue(this.plugin.config.settings.desktopStartupPageId).onChange((value) => this.plugin.config.settings.desktopStartupPageId = value));
     new import_obsidian.Setting(containerEl).setName("\u540C\u6B65\u51B2\u7A81\u5904\u7406").setDesc("\u5F53 S3 \u6216\u5176\u4ED6\u8BBE\u5907\u6539\u5199\u5E93\u5185 JSON \u65F6\uFF0C\u5148\u91CD\u65B0\u8BFB\u53D6\u6216\u4ECE\u5386\u53F2\u6062\u590D\uFF1B\u4E0D\u4F1A\u9759\u9ED8\u8986\u76D6\u3002").addButton((button) => button.setButtonText("\u91CD\u65B0\u8BFB\u53D6\u5E93\u5185\u914D\u7F6E").onClick(() => void this.plugin.reloadConfigFromVault())).addButton((button) => button.setButtonText("\u67E5\u770B\u5386\u53F2\u7248\u672C").onClick(() => new HistoryModal(this.app, this.plugin).open()));
     new import_obsidian.Setting(containerEl).addButton((button) => button.setButtonText("\u4FDD\u5B58\u8BBE\u7F6E").setCta().onClick(async () => {
       await this.plugin.saveConfig("\u66F4\u65B0\u8BBE\u7F6E");

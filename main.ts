@@ -2,6 +2,7 @@ import {
   App,
   ButtonComponent,
   ColorComponent,
+  DropdownComponent,
   ItemView,
   MarkdownRenderer,
   Modal,
@@ -20,7 +21,7 @@ import {
 
 const VIEW_TYPE_HOME_BUILDER = "home-builder-view";
 const DEFAULT_CONFIG_PATH = "Home Builder/home-builder.json";
-const PLUGIN_VERSION = "0.5.2";
+const PLUGIN_VERSION = "0.5.4";
 
 type Device = "mobile" | "tablet" | "desktop";
 type LayoutMode = "independent" | "shared" | "hybrid";
@@ -128,6 +129,9 @@ interface HomeConfig {
   settings: {
     openOnStartup: boolean;
     startupPageId: string;
+    mobileStartupPageId: string;
+    tabletStartupPageId: string;
+    desktopStartupPageId: string;
     gridColumns: 2 | 3 | 4;
     tabletGridColumns: "auto" | 2 | 3;
   };
@@ -308,7 +312,15 @@ function defaultConfig(): HomeConfig {
     savedPages: [],
     theme: { backgroundType: "none", backgroundValue: "", accent: "#7c3aed", cardOpacity: 0.88 },
     banner: { enabled: false, imagePath: "", title: "", subtitle: "", alt: "主页横幅图片", height: 220, overlay: .42, rounded: true },
-    settings: { openOnStartup: false, startupPageId: "", gridColumns: 2, tabletGridColumns: "auto" },
+    settings: {
+      openOnStartup: false,
+      startupPageId: "",
+      mobileStartupPageId: "",
+      tabletStartupPageId: "",
+      desktopStartupPageId: "",
+      gridColumns: 2,
+      tabletGridColumns: "auto",
+    },
     history: [],
     layouts: {
       mobile: { modules: starterModules() },
@@ -401,7 +413,10 @@ export default class HomeBuilderPlugin extends Plugin {
   }
 
   async openConfiguredStartupPage() {
-    const id = this.config.settings.startupPageId;
+    const device = this.getDevice();
+    const id = (device === "mobile" ? this.config.settings.mobileStartupPageId
+      : device === "tablet" ? this.config.settings.tabletStartupPageId
+      : this.config.settings.desktopStartupPageId) || this.config.settings.startupPageId;
     if (id && id !== this.config.pageId && this.config.savedPages.some((page) => page.id === id)) await this.switchPage(id);
     await this.openHome();
   }
@@ -1760,11 +1775,19 @@ class HomeBuilderSettings extends PluginSettingTab {
       .addDropdown((drop) => drop.addOption("2", "2 列").addOption("3", "3 列").addOption("4", "4 列").setValue(String(this.plugin.config.settings.gridColumns)).onChange((value) => this.plugin.config.settings.gridColumns = Number(value) as 2 | 3 | 4));
     new Setting(containerEl).setName("启动时打开 Home Builder").setDesc("可选。开启后会在 Obsidian 布局就绪时打开指定主页；不会修改 Homepage 插件的配置。")
       .addToggle((toggle) => toggle.setValue(this.plugin.config.settings.openOnStartup).onChange((value) => this.plugin.config.settings.openOnStartup = value));
-    new Setting(containerEl).setName("启动主页").setDesc("仅在开启启动主页后生效。").addDropdown((drop) => {
+    const addStartupPageOptions = (drop: DropdownComponent) => {
       drop.addOption("", "当前主页");
       for (const page of this.plugin.listPages()) drop.addOption(page.id, page.name);
-      return drop.setValue(this.plugin.config.settings.startupPageId).onChange((value) => this.plugin.config.settings.startupPageId = value);
-    });
+      return drop;
+    };
+    new Setting(containerEl).setName("统一启动主页").setDesc("所有设备都未单独选择时使用。").addDropdown((drop) =>
+      addStartupPageOptions(drop).setValue(this.plugin.config.settings.startupPageId).onChange((value) => this.plugin.config.settings.startupPageId = value));
+    new Setting(containerEl).setName("手机启动主页").setDesc("留空时使用统一启动主页。").addDropdown((drop) =>
+      addStartupPageOptions(drop).setValue(this.plugin.config.settings.mobileStartupPageId).onChange((value) => this.plugin.config.settings.mobileStartupPageId = value));
+    new Setting(containerEl).setName("Pad 启动主页").setDesc("留空时使用统一启动主页。").addDropdown((drop) =>
+      addStartupPageOptions(drop).setValue(this.plugin.config.settings.tabletStartupPageId).onChange((value) => this.plugin.config.settings.tabletStartupPageId = value));
+    new Setting(containerEl).setName("电脑启动主页").setDesc("留空时使用统一启动主页。").addDropdown((drop) =>
+      addStartupPageOptions(drop).setValue(this.plugin.config.settings.desktopStartupPageId).onChange((value) => this.plugin.config.settings.desktopStartupPageId = value));
     new Setting(containerEl).setName("同步冲突处理").setDesc("当 S3 或其他设备改写库内 JSON 时，先重新读取或从历史恢复；不会静默覆盖。")
       .addButton((button) => button.setButtonText("重新读取库内配置").onClick(() => void this.plugin.reloadConfigFromVault()))
       .addButton((button) => button.setButtonText("查看历史版本").onClick(() => new HistoryModal(this.app, this.plugin).open()));

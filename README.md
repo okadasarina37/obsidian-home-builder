@@ -164,7 +164,7 @@ Tasks、Dataview 和 DataviewJS 模块仍由原插件渲染，因此原有查询
 
 ### 如何设置启动主页？
 
-打开 Obsidian 设置 → Home Builder，开启“启动时打开 Home Builder”，并选择主页。它不会修改其它 Homepage 插件的设置。
+打开 Obsidian 设置 → Home Builder，开启“启动时打开 Home Builder”。可设置统一启动主页，也可分别设置手机、Pad、电脑的启动主页；设备专属选择留空时自动回退到统一主页。它不会修改其它 Homepage 插件的设置。
 
 ### 如何报告问题？
 

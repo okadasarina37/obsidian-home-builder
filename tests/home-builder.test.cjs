@@ -18,6 +18,7 @@ const obsidianMock = {
     Setting: EmptyComponent,
     ButtonComponent: EmptyComponent,
     Notice: class {},
+    Platform: { isMobileApp: true },
     normalizePath: (path) => path.replace(/\\/g, "/"),
     MarkdownRenderer: {},
 };
@@ -46,6 +47,26 @@ try {
 
     assert.equal(writes.length, 1);
     assert.equal(writes[0].path, "Home Builder/主页索引.md");
+  });
+
+  test("openConfiguredStartupPage prefers the mobile startup page on a phone", async () => {
+    global.window = { innerWidth: 390, innerHeight: 844 };
+    const plugin = new HomeBuilderPlugin({});
+    const selected = [];
+    plugin.config = {
+      pageId: "current",
+      savedPages: [{ id: "shared", name: "统一主页" }, { id: "phone", name: "手机主页" }],
+      settings: {
+        startupPageId: "shared",
+        mobileStartupPageId: "phone",
+      },
+    };
+    plugin.switchPage = async (id) => selected.push(id);
+    plugin.openHome = async () => {};
+
+    await plugin.openConfiguredStartupPage();
+
+    assert.deepEqual(selected, ["phone"]);
   });
 } finally {
   Module._load = originalLoad;

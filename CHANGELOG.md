@@ -2,6 +2,11 @@
 
 All notable user-facing changes are documented here.
 
+## 0.5.4
+
+- Supports separate startup dashboards for phone, tablet, and desktop.
+- Each device falls back to the existing unified startup dashboard when its own selection is empty, so existing configurations keep working unchanged.
+
 ## 0.5.3
 
 - Fixes a mobile startup failure that could occur after reopening Obsidian while the vault file index was still catching up with the `Home Builder` folder.
