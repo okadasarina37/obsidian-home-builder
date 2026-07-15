@@ -644,11 +644,29 @@ export default class HomeBuilderPlugin extends Plugin {
       new Notice(`Home Builder: 无法读取主页配置：${String(error)}`);
     }
     this.normalizePageOrder();
-    await this.writePageIndex(path.split("/").slice(0, -1).join("/"));
+    await this.tryWritePageIndex(path.split("/").slice(0, -1).join("/"));
+  }
+
+  private async ensureFolder(folder: string) {
+    if (!folder || this.app.vault.getAbstractFileByPath(folder)) return;
+    if (await this.app.vault.adapter.exists(folder)) return;
+    try {
+      await this.app.vault.createFolder(folder);
+    } catch (error) {
+      if (!await this.app.vault.adapter.exists(folder)) throw error;
+    }
+  }
+
+  private async tryWritePageIndex(folder: string) {
+    try {
+      await this.writePageIndex(folder);
+    } catch (error) {
+      console.warn("Home Builder: 无法更新主页索引", error);
+    }
   }
 
   private async writePageIndex(folder: string) {
-    if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+    await this.ensureFolder(folder);
     const indexPath = normalizePath(folder ? `${folder}/主页索引.md` : "主页索引.md");
     const configPath = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
     const lines = [
@@ -678,7 +696,7 @@ export default class HomeBuilderPlugin extends Plugin {
     this.config.savedPages = this.config.savedPages.filter((page) => page.id !== this.config.pageId);
     const path = normalizePath(this.config.configPath || DEFAULT_CONFIG_PATH);
     const folder = path.split("/").slice(0, -1).join("/");
-    if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+    await this.ensureFolder(folder);
     const snapshot = clone(this.config);
     snapshot.history = [];
     const historyEntry = { at: new Date().toISOString(), reason, data: JSON.stringify(snapshot) };
@@ -686,7 +704,7 @@ export default class HomeBuilderPlugin extends Plugin {
     const serialized = JSON.stringify(this.config, null, 2);
     await this.app.vault.adapter.write(path, serialized);
     this.lastSavedConfig = serialized;
-    await this.writePageIndex(folder);
+    await this.tryWritePageIndex(folder);
     await this.saveData({ configPath: path, layoutMode: this.config.layoutMode, theme: this.config.theme });
     if (refresh) await this.refreshViews();
   }

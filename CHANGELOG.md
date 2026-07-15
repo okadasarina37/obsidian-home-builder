@@ -2,6 +2,11 @@
 
 All notable user-facing changes are documented here.
 
+## 0.5.3
+
+- Fixes a mobile startup failure that could occur after reopening Obsidian while the vault file index was still catching up with the `Home Builder` folder.
+- Home page index generation is now best-effort: it never prevents the saved home configuration from loading or saving.
+
 ## 0.5.2
 
 - Activity heatmap cell-size options: automatic, small `10px`, standard `12px`, and large `16px`.

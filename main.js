@@ -543,10 +543,26 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
       new import_obsidian.Notice(`Home Builder: \u65E0\u6CD5\u8BFB\u53D6\u4E3B\u9875\u914D\u7F6E\uFF1A${String(error)}`);
     }
     this.normalizePageOrder();
-    await this.writePageIndex(path.split("/").slice(0, -1).join("/"));
+    await this.tryWritePageIndex(path.split("/").slice(0, -1).join("/"));
+  }
+  async ensureFolder(folder) {
+    if (!folder || this.app.vault.getAbstractFileByPath(folder)) return;
+    if (await this.app.vault.adapter.exists(folder)) return;
+    try {
+      await this.app.vault.createFolder(folder);
+    } catch (error) {
+      if (!await this.app.vault.adapter.exists(folder)) throw error;
+    }
+  }
+  async tryWritePageIndex(folder) {
+    try {
+      await this.writePageIndex(folder);
+    } catch (error) {
+      console.warn("Home Builder: \u65E0\u6CD5\u66F4\u65B0\u4E3B\u9875\u7D22\u5F15", error);
+    }
   }
   async writePageIndex(folder) {
-    if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+    await this.ensureFolder(folder);
     const indexPath = (0, import_obsidian.normalizePath)(folder ? `${folder}/\u4E3B\u9875\u7D22\u5F15.md` : "\u4E3B\u9875\u7D22\u5F15.md");
     const configPath = (0, import_obsidian.normalizePath)(this.config.configPath || DEFAULT_CONFIG_PATH);
     const lines = [
@@ -576,7 +592,7 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     this.config.savedPages = this.config.savedPages.filter((page) => page.id !== this.config.pageId);
     const path = (0, import_obsidian.normalizePath)(this.config.configPath || DEFAULT_CONFIG_PATH);
     const folder = path.split("/").slice(0, -1).join("/");
-    if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+    await this.ensureFolder(folder);
     const snapshot = clone(this.config);
     snapshot.history = [];
     const historyEntry = { at: (/* @__PURE__ */ new Date()).toISOString(), reason, data: JSON.stringify(snapshot) };
@@ -584,7 +600,7 @@ var HomeBuilderPlugin = class extends import_obsidian.Plugin {
     const serialized = JSON.stringify(this.config, null, 2);
     await this.app.vault.adapter.write(path, serialized);
     this.lastSavedConfig = serialized;
-    await this.writePageIndex(folder);
+    await this.tryWritePageIndex(folder);
     await this.saveData({ configPath: path, layoutMode: this.config.layoutMode, theme: this.config.theme });
     if (refresh) await this.refreshViews();
   }
